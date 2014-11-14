@@ -71,6 +71,21 @@ public:
 template< typename T >
 class Inode : public InodeBase {
   // put a static counter here.
+  int linkCount; // =0 // incremented/decremented by ln/rm
+  int openCount; // =0 // incremented/decremented by OpenFile()/~OPenFile()
+  bool readable; // = false;  // set by create. 
+  bool writeable; // = false; // set by create.
+  
+  int unlink() { 
+    assert( linkCount > 0 );
+    -- linkCount;
+    cleanup();
+  }
+  void cleanup() {
+    if ( ! openCount && ! linkCount ) {
+      // throwstuff away
+    }
+  }
 };
 
 template<>
@@ -93,16 +108,25 @@ public:
   Directory* file;
   Inode<Directory> ( Directory* x ) 
     : file(x)
-  {}
+  {
+  }
   string show() {   // a simple diagnostic aid
-    return " This is an inode that describes a/an " + type + ".\n"; 
+	
+    return " " + type + ".\n"; 
   } 
 };
 
 
 class Directory {
 public:
-
+  Inode<Directory>* parent = NULL;
+  Inode<Directory>* current;
+  
+  Directory ()
+  {}  
+  Directory (Inode<Directory>* parent, Inode<Directory>* current)
+    : parent(this->parent), current(this->current)
+  {}
   // directories point to inodes, which in turn point to files.
   //map<string, Inode*> theMap;  // the data for this directory
   map<string, InodeBase*> theMap;  // the data for this directory
@@ -113,13 +137,14 @@ public:
 
   int rm( string s ) { theMap.erase(s); }
 
-  void cd( string s, Inode<Directory>* &wdi, Inode<Directory>* root ) {
+  void cd( string s, Inode<Directory>* &wdi) {
 	if ( theMap.find(s) !=  theMap.end()) {
 		InodeBase* ind = this->theMap[s];
 		Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(ind);
-		wdi = dynamic_cast<Inode<Directory>*>(theMap[s]	);
+		wdi = dynamic_cast<Inode<Directory>*>(theMap[s]);
 	}
-	else if(s == ".." ) wdi = root;
+	else if(s == "." ) wdi = current;
+	else if(s == ".." ) wdi = parent;
 	else {
 		cerr << "cd: failed. No such file or directory named " << s 
              << ".\n";
@@ -129,6 +154,7 @@ public:
   template<typename T>                               
   int mk( string s, T* x ) {
     Inode<T>* ind = new Inode<T>(x);
+    (ind->file)->current = ind;
     theMap[s] = ind;
   }
  
@@ -144,11 +170,41 @@ Inode<Directory>* rdi = root;     	  // Inode of working directory
 Directory* wd() { return wdi->file; }        // Working Directory
 Directory* rootdir() { return rdi->file; }        // Root Directory
 
-/*
+queue<string> path (vector<string> v) {
+   // to process a path name
+   queue<string> pathtok;
+   if( v.size() == 0 || v.empty() ) {
+	   pathtok.push(".");
+	   return pathtok;
+   }
+   
+   
+   if(v[0].substr(0,1) == "/") pathtok.push("/");
+   char* s;
+   char* tok = const_cast<char *>(v[0].c_str());
+   s = strtok(tok,"/");
+   while (s != NULL)
+   {
+      pathtok.push(s);
+	  s = strtok(NULL,"/");
+   }
+   return pathtok;
+	
+} 
+
+
 InodeBase* search( Inode<Directory>* n, vector<string> v ) {
    // to process a path name
    Inode<Directory>* ind = wdi;
-   if ( v[0] == "" ) ind = root;
+   if( v.size() == 0 ) return root;
+   queue<Inode<Directory>*> pathtokI;
+   if(v[0].substr(0,1) == "/") pathtokI.push(root);
+   //pathtok.push(strtok(v[0],"/"));
+   else pathtokI.push(wdi);
+   return pathtokI.front();
+   
+   
+   /*
    stringstream prefix;
    queue<string> suffix;
    for ( auto it : v ) suffix.push( it ); 
@@ -166,9 +222,9 @@ InodeBase* search( Inode<Directory>* n, vector<string> v ) {
      }   
      cerr << prefix.str() << ": No such file or directory\n";
      return ind;
-   }
+   }*/
  }
-*/
+
 
 int ls( Args tok ) {
   cout << wdi << " /" <<endl;
@@ -176,12 +232,26 @@ int ls( Args tok ) {
 }
 
 int mkdir( Args tok ) {
+// This is a queue search. not needed, maybe for the -p command
+/*  if(tok.empty()) {
+	cout << "mkdir: Error, no arguments passed.\n";
+    return -1;
+  }
+  
+  queue<string> temp = path(tok);
+  while(!temp.empty()) {
+    cout << temp.front() << endl;
+    temp.pop();
+  }*/
+  
   wd()->mk( tok[0], new Directory );
+  dynamic_cast<Inode<Directory>*>(wd()->theMap[tok[0]])->file->parent = wdi;
+  
 }   
 
 int cddir( Args tok ) {
    if ( tok[0] != "mkdir" && tok[0] != "ls" && tok[0] !=  "cd" && tok[0] != "rmdir" && tok[0] != "exit")
-       wd()->cd(tok[0], wdi, root);
+       wd()->cd(tok[0], wdi);
    else {
 	   cerr << "cd: failed. No such file or directory named " << tok[0]
             << ".\n";
