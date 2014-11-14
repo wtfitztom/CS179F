@@ -9,6 +9,7 @@
 #include<vector>
 #include<cassert>
 #include<unistd.h>
+#include<ctime>
 
 using namespace std;
 
@@ -66,6 +67,8 @@ class InodeBase {
 public: 
   string type;
   virtual string show() = 0;
+  time_t ctime, mtime, atime;
+  
 };
 
 template< typename T >
@@ -156,6 +159,13 @@ public:
     Inode<T>* ind = new Inode<T>(x);
     (ind->file)->current = ind;
     theMap[s] = ind;
+    time_t timer;
+    ind->ctime = time(&timer);
+    ind->atime = time(&timer);
+    ind->mtime = time(&timer);
+    
+    //cout << "Time:" << asctime( &ind->ctime ) << "\t" << ind->atime << "\t" << ind->mtime << endl;
+    
   }
  
 };
