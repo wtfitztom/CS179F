@@ -355,39 +355,32 @@ public:
   } // end of constructor
 };
 
-void TreeDFS ( Inode<Directory>* ind, int level, bool last) {
+void TreeDFS ( Inode<Directory>* ind, int level, string s) {
   int count = 0;
-  bool newlast;
-  if(ind->file->theMap.size() <= level+1) newlast = false;
-  else newlast = true;
+  string old_s = s;
   for(auto it = ind->file->theMap.begin(); it != ind->file->theMap.end(); ++it) {
-	
-	if(last)
-	  for(int i = 0; i < level; ++i) {
-		cout << "│  ";
-	  }
-	else
-	  for(int i = 0; i < level; ++i) {
-		cout << "   ";
-	  }
 	++count;
 	if(it->second->type() == "dir") {
       if(!dynamic_cast<Inode<Directory>*>(it->second)->file->theMap.empty()) {
-	    if(ind->file->theMap.size() != count) cout << "├──" << it->first << " " << it->second->show();
+	    if(ind->file->theMap.size() != count) {
+		  cout << old_s << "├──" << it->first << " " << it->second->show();
+		  s = old_s + "│  ";
+		}
 	    else {
-		  newlast = false;
-		  cout << "└──" << it->first << " " << it->second->show();
+		  cout <<  old_s << "└──" << it->first << " " << it->second->show();
+		  s = old_s + "   ";
 		}
 	  }
 	  else {
-	    if(ind->file->theMap.size() != count) cout << "├──" << it->first << " " << it->second->show();
-	    else cout << "└──" << it->first << " " << it->second->show();
+	    if(ind->file->theMap.size() != count) cout <<  old_s << "├──" << it->first << " " << it->second->show();
+	    else cout <<  old_s << "└──" << it->first << " " << it->second->show();
 	  }
-	  TreeDFS(dynamic_cast<Inode<Directory>*>(it->second), level+1, newlast);
+	  TreeDFS(dynamic_cast<Inode<Directory>*>(it->second), level+1, s);
 	}
-	else if(ind->file->theMap.size() != count) cout << "├──" << it->first << " " << it->second->show();
-	else cout << "└──" << it->first << " " << it->second->show();
+	else if(ind->file->theMap.size() != count) cout <<  old_s << "├──" << it->first << " " << it->second->show();
+	else cout <<  old_s << "└──" << it->first << " " << it->second->show();
   }
+  return;
 }
 
 
@@ -413,11 +406,13 @@ int pwd( Args tok ) {
 	temp.pop_back();
   }
   cout << endl;
+  return 0;
 }
 
 int tree( Args tok ){
   cout << "." << endl;
-  TreeDFS(wdi, 0, false);
+  TreeDFS(wdi, 0, "");
+  return 0;
 }
 
 int touch( Args tok ) {
@@ -448,6 +443,7 @@ int touch( Args tok ) {
     }
 	v.erase(v.begin()+1);
   }
+  return 0;
 }
 
 int cd( Args tok ) {
@@ -596,6 +592,7 @@ int main( int argc, char* argv[] ) {
     if ( cmd == "" ) continue;
     Inode<App>* junk = static_cast<Inode<App>*>((dynamic_cast<Inode<Directory>*>(root->file->theMap["Apps"])->file->theMap)[cmd] ); //Update to put apps in a directory
     if ( ! junk ) {
+	  (dynamic_cast<Inode<Directory>*>(root->file->theMap["Apps"])->file->theMap).erase(cmd);
       cerr << "shell: " << cmd << " command not found\n";
       continue;
     }
