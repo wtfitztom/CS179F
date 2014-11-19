@@ -62,6 +62,19 @@ typedef int App(Args);  // apps take a vector of strings and return an int.
 class Device;
 class Directory;
 
+struct Info
+{
+  string name;
+  int flag; // 0 for file, 1 for directory maybe others for 2.. etc
+  int level; // tells us if the directory is at the same level as something else	
+
+  Info()
+  :name(""),flag(-1),level(-1)
+  {}
+  Info(string n,int f, int l)
+  :name(n),flag(f),level(l)
+  {}
+};
 
 class InodeBase {
 public: 
