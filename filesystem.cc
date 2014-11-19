@@ -355,6 +355,42 @@ public:
   } // end of constructor
 };
 
+void TreeDFS ( Inode<Directory>* ind, int level, bool last) {
+  int count = 0;
+  bool newlast;
+  if(ind->file->theMap.size() <= level+1) newlast = false;
+  else newlast = true;
+  for(auto it = ind->file->theMap.begin(); it != ind->file->theMap.end(); ++it) {
+	
+	if(last)
+	  for(int i = 0; i < level; ++i) {
+		cout << "│  ";
+	  }
+	else
+	  for(int i = 0; i < level; ++i) {
+		cout << "   ";
+	  }
+	++count;
+	if(it->second->type() == "dir") {
+      if(!dynamic_cast<Inode<Directory>*>(it->second)->file->theMap.empty()) {
+	    if(ind->file->theMap.size() != count) cout << "├──" << it->first << " " << it->second->show();
+	    else {
+		  newlast = false;
+		  cout << "└──" << it->first << " " << it->second->show();
+		}
+	  }
+	  else {
+	    if(ind->file->theMap.size() != count) cout << "├──" << it->first << " " << it->second->show();
+	    else cout << "└──" << it->first << " " << it->second->show();
+	  }
+	  TreeDFS(dynamic_cast<Inode<Directory>*>(it->second), level+1, newlast);
+	}
+	else if(ind->file->theMap.size() != count) cout << "├──" << it->first << " " << it->second->show();
+	else cout << "└──" << it->first << " " << it->second->show();
+  }
+}
+
+
 int pwd( Args tok ) {
   vector<string> temp;
   Inode<Directory>* ind = wdi->file->parent;
@@ -377,6 +413,11 @@ int pwd( Args tok ) {
 	temp.pop_back();
   }
   cout << endl;
+}
+
+int tree( Args tok ){
+  cout << "." << endl;
+  TreeDFS(wdi, 0, false);
 }
 
 int touch( Args tok ) {
@@ -483,7 +524,7 @@ int rmdir( Args tok ) {
   if ( ! dir_ptr ) { 
     cerr << "rmdir: failed to remove `" << tok[0] 
          << "'; no such file or directory.\n";
-  } else if (dir_ptr->file->theMap.find(su.lastSeg) == dir_ptr->file->theMap.end() || dynamic_cast<Inode<File>*>(dir_ptr->file->theMap[su.lastSeg])->type() != "dir") {  // oops: if not there. added directory check
+  } else if (dir_ptr->file->theMap.find(su.lastSeg) == dir_ptr->file->theMap.end() || dynamic_cast<Inode<Directory>*>(dir_ptr->file->theMap[su.lastSeg])->type() != "dir") {  // oops: if not there. added directory check
     cerr << "rmdir: failed to remove `" << su.lastSeg
          << "'; no such file or directory.\n";
   } else if (dynamic_cast<Inode<Directory>*>(dir_ptr->file->theMap[su.lastSeg])->file->theMap.size() != 0) { // added empty check
@@ -523,7 +564,8 @@ map<string, App*> apps = {
   pair<const string, App*>("rm", rm),
   pair<const string, App*>("cd", cd),
   pair<const string, App*>("touch", touch),
-  pair<const string, App*>("pwd", pwd)
+  pair<const string, App*>("pwd", pwd),
+  pair<const string, App*>("tree", tree)
 };  // app maps mames to their implementations.
 
 
