@@ -302,7 +302,11 @@ public:
 		  cerr << ": cannot access " << prefix.str() << ": Not a directory\n";
 		  break;
 		}
-		if ( dir->theMap.find(seg) != dir->theMap.end() ) {    // Added check so only valids can be added to map
+		if (seg == ".") continue;
+		else if (seg == "..") {
+          if(ind->file->parent != NULL) ind = ind->file->parent;
+		}
+		else if ( dir->theMap.find(seg) != dir->theMap.end() ) {    // Added check so only valids can be added to map
 		  ind = dynamic_cast<Inode<Directory>*>( (dir->theMap)[seg] );
 		  if ( ! ind ) {
 			cerr << prefix.str() << ": No such file or directory\n";
@@ -322,19 +326,23 @@ public:
     }
     b = ( lastSeg == "" ? ind : (ind->file->theMap.find(lastSeg) != ind->file->theMap.end() ? ind->file->theMap[lastSeg] : 0)); // Added if-statement so only valids can be added to map
     if ( !b  && cmd != "mkdir" && cmd !="touch") {
-      if(input == "." && ind == root) { // Added checks for . & .. directories
+      if(lastSeg == "." && ind == root) { // Added checks for . & .. directories
         lastSeg = "/";
         b = root;
       }
-      else if(input == ".." && ind != root) { // Added checks for . & .. directories
+      else if(lastSeg == ".." && ind != root) { // Added checks for . & .. directories
         b = wdi->file->parent;
-		 if(b == root) lastSeg = "/";
-		 else {
+		if(b == root) lastSeg = "/";
+		else {
           for (auto it = dynamic_cast<Inode<Directory>*>(b)->file->parent->file->theMap.begin(); it != dynamic_cast<Inode<Directory>*>(b)->file->parent->file->theMap.end(); ++it )
             if (it->second == b) lastSeg = it->first;
-		 }
+		}
       }
-      else if(input == ".") { // Added checks for . & .. directories
+      else if(lastSeg == ".." && ind == root) {
+        b = root;
+		lastSeg = "/";
+	  }
+      else if(lastSeg == ".") { // Added checks for . & .. directories
         b = wdi->file->current;
         lastSeg = current;
       }
@@ -342,10 +350,34 @@ public:
         cerr << cmd << ":" << lastSeg << ": No such file or directory\n";
         error = true;
       }
-    } 
+    }
 
   } // end of constructor
 };
+
+int pwd( Args tok ) {
+  vector<string> temp;
+  Inode<Directory>* ind = wdi->file->parent;
+  Inode<Directory>* indb = wdi;
+  while( ind ) {
+    for(auto it = ind->file->theMap.begin(); it != ind->file->theMap.end(); ++it ) {
+	  if(it->second == indb) {
+		temp.push_back(it->first);
+		temp.push_back("/");
+	    break;
+	  }
+	}
+	indb = ind;
+	ind = ind->file->parent;
+  }
+  if(temp.empty()) temp.push_back("/");
+  cout << "Current Directory is: ";
+  while (!temp.empty()) {
+    cout << temp[temp.size()-1];
+	temp.pop_back();
+  }
+  cout << endl;
+}
 
 int touch( Args tok ) {
   if ( tok.size() < 2 ) {
@@ -490,7 +522,8 @@ map<string, App*> apps = {
   pair<const string, App*>("exit", exit),
   pair<const string, App*>("rm", rm),
   pair<const string, App*>("cd", cd),
-  pair<const string, App*>("touch", touch)
+  pair<const string, App*>("touch", touch),
+  pair<const string, App*>("pwd", pwd)
 };  // app maps mames to their implementations.
 
 
