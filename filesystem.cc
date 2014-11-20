@@ -7,19 +7,20 @@
 // * mkdir foo/junk works even if foo does not exit but puts
 //   junk into current dir.
 
-#include<iostream>
-#include<vector>
-#include<queue>
-#include<map>
-#include<string>
-#include<sstream>
-#include<string.h>
-#include<utility>
-#include<vector>
-#include<cassert>
-#include<unistd.h>
-#include<ctime>
-#include<iomanip>
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <queue>
+#include <map>
+#include <string>
+#include <sstream>
+#include <string.h>
+#include <utility>
+#include <vector>
+#include <cassert>
+#include <unistd.h>
+#include <ctime>
+#include <iomanip>
 
 using namespace std;
 
@@ -355,7 +356,7 @@ public:
   } // end of constructor
 };
 
-void TreeDFS ( Inode<Directory>* ind, int level, string s) {
+void TreeDFS ( Inode<Directory>* ind, int level, string s) {	
   int count = 0;
   string old_s = s;
   for(auto it = ind->file->theMap.begin(); it != ind->file->theMap.end(); ++it) {
@@ -408,6 +409,47 @@ int pwd( Args tok ) {
   cout << endl;
   return 0;
 }
+
+void preserveRecursive ( Inode<Directory>* ind, int level, string s, ofstream& store) {
+  int count = 0;
+  string old_s = s;
+  for(auto it = ind->file->theMap.begin(); it != ind->file->theMap.end(); ++it) {
+	++count;
+	if(it->second->type() == "dir") {
+      if(!dynamic_cast<Inode<Directory>*>(it->second)->file->theMap.empty()) {
+	    if(ind->file->theMap.size() != count) {
+		  store << old_s << it->first;// << " " << it->second->show();
+		  s = old_s + ",";
+		}
+	    else {
+		  store <<  old_s << it->first;// << " " << it->second->show();
+		  s = old_s + ",";
+		}
+	  }
+	  else {
+	    if(ind->file->theMap.size() != count) store <<  old_s << it->first;// << " " << it->second->show(); // dir content
+	    else store <<  old_s << it->first << ";" << endl;//<< it->second->show();
+	  }
+	  preserveRecursive(dynamic_cast<Inode<Directory>*>(it->second), level+1, s, store);
+	}
+	else if(ind->file->theMap.size() != count) store <<  old_s << it->first;// << " " << it->second->show(); // dir content
+	else store <<  old_s << it->first << ";" << endl;// << it->second->show();
+  }
+  return;
+
+}
+
+void preserve ( Inode<Directory>* ind, int level, string s) {
+  ofstream store ("info.txt");
+  if (store.is_open())
+  {
+    preserveRecursive(ind, level, s, store);
+	store.close();
+   }
+  else cout << "Unable to open file";	
+  return;
+}
+
 
 int tree( Args tok ){
   cout << "." << endl;
@@ -548,6 +590,7 @@ int rm( Args tok ) {
 }
 
 int exit( Args tok ) {
+  preserve(root, 0, "");	
   _exit(0);
 }
 
@@ -566,6 +609,7 @@ map<string, App*> apps = {
 
 
 int main( int argc, char* argv[] ) {
+	
   root->file = new Directory;   // OOPS!!! review this.
   Directory* appdir = new Directory(); //Update to put apps in a directory
   root->file->mk("Apps", appdir); //Update to put apps in a directory
@@ -603,6 +647,7 @@ int main( int argc, char* argv[] ) {
       cerr << "Instruction " << cmd << " not implemented.\n";
     }
   }
+  preserve(root, 0, "");	
 
   cout << "exit" << endl;
   return 0;                                                  // exit.
