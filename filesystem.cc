@@ -145,7 +145,7 @@ public:
   void ls() {   
     // for (auto& it : theMap) { 
     for (auto it = theMap.begin(); it != theMap.end(); ++it ) { 
-      if ( it->second ) cout << it->first << " " << it->second->show();
+      cout << it->first << " " << it->second->show();
       //if ( it->second ) cout << setw(14) << left << it->first; 
     }
     if ( ! theMap.size() ) cout << "Empty Map"<< endl;  // comment lin out
@@ -314,15 +314,16 @@ public:
 			break;
 		  }
 		}
-		else if ( cmd == "mkdir" ) {
-			  cerr << "mkdir: cannot create directory `" << prefix.str() << "/" 
-				   << lastSeg << "': No such file or directory\n";
+		else if ( cmd == "mkdir" || cmd == "touch") {
+		  cerr << cmd << ": cannot create directory `" << prefix.str() << "/" 
+		       << lastSeg << "': No such file or directory\n";
 		  error = true;
 		}  
       }
     }
     if ( ! ind ) {
-      cerr << "cmd: " << input << " not found\n"; 
+      cerr << cmd <<": " << input << " not found\n"; 
+      error = true;
       return;
     }
     b = ( lastSeg == "" ? ind : (ind->file->theMap.find(lastSeg) != ind->file->theMap.end() ? ind->file->theMap[lastSeg] : 0)); // Added if-statement so only valids can be added to map
@@ -348,7 +349,7 @@ public:
         lastSeg = current;
       }
       else {
-        cerr << cmd << ":" << lastSeg << ": No such file or directory\n";
+        cerr << lastSeg << ": No such file or directory\n";
         error = true;
       }
     }
@@ -356,7 +357,7 @@ public:
   } // end of constructor
 };
 
-void TreeDFS ( Inode<Directory>* ind, int level, string s) {	
+void TreeDFS ( Inode<Directory>* ind, string s) {
   int count = 0;
   string old_s = s;
   for(auto it = ind->file->theMap.begin(); it != ind->file->theMap.end(); ++it) {
@@ -364,22 +365,28 @@ void TreeDFS ( Inode<Directory>* ind, int level, string s) {
 	if(it->second->type() == "dir") {
       if(!dynamic_cast<Inode<Directory>*>(it->second)->file->theMap.empty()) {
 	    if(ind->file->theMap.size() != count) {
-		  cout << old_s << "├──" << it->first << " " << it->second->show();
-		  s = old_s + "│  ";
+		  cout << old_s << "├── " << it->first << " " << it->second->show();
+		  s = old_s + "│   ";
 		}
 	    else {
-		  cout <<  old_s << "└──" << it->first << " " << it->second->show();
-		  s = old_s + "   ";
+		  cout <<  old_s << "└── " << it->first << " " << it->second->show();
+		  s = old_s + "    ";
 		}
 	  }
 	  else {
-	    if(ind->file->theMap.size() != count) cout <<  old_s << "├──" << it->first << " " << it->second->show();
-	    else cout <<  old_s << "└──" << it->first << " " << it->second->show();
+	    if(ind->file->theMap.size() != count) cout <<  old_s << "├── " << it->first << " " << it->second->show();
+	    else cout <<  old_s << "└── " << it->first << " " << it->second->show();
 	  }
-	  TreeDFS(dynamic_cast<Inode<Directory>*>(it->second), level+1, s);
+	  TreeDFS(dynamic_cast<Inode<Directory>*>(it->second), s);
 	}
-	else if(ind->file->theMap.size() != count) cout <<  old_s << "├──" << it->first << " " << it->second->show();
-	else cout <<  old_s << "└──" << it->first << " " << it->second->show();
+	else if(ind->file->theMap.size() != count) {
+	  if(it->second->type() == "file") cout <<  old_s << "├── " << "\033[0;32m" << it->first << " " << it->second->show() << "\033[0;30m";
+	  else cout <<  old_s << "├── " << it->first << " " << it->second->show();
+	}
+	else {
+	  if(it->second->type() == "file") cout <<  old_s << "└── " << "\033[0;32m" << it->first << " " << it->second->show() << "\033[0;30m";
+	  else cout <<  old_s << "└── " << it->first << " " << it->second->show();
+	}
   }
   return;
 }
@@ -410,50 +417,99 @@ int pwd( Args tok ) {
   return 0;
 }
 
-void preserveRecursive ( Inode<Directory>* ind, int level, string s, ofstream& store) {
+
+string pwdStr( Inode<Directory>* indb ) {
+	string pwdStr = "";
+  vector<string> temp;
+  Inode<Directory>* ind = indb->file->parent;
+  while( ind ) {
+    for(auto it = ind->file->theMap.begin(); it != ind->file->theMap.end(); ++it ) {
+	  if(it->second == indb) {
+		temp.push_back(it->first);
+		temp.push_back("/");
+	    break;
+	  }
+	}
+	indb = ind;
+	ind = ind->file->parent;
+  }
+  if(temp.empty()) temp.push_back("/");
+  //cout << "Current Directory is: ";
+  while (!temp.empty()) {
+    pwdStr += temp[temp.size()-1];
+	temp.pop_back();
+  }
+  return pwdStr;
+}
+
+
+
+void reload(string file){
+  Inode<Directory>* r = root;
+  string line = "";
+  ifstream myfile (file);
+  if (myfile.is_open())
+  {
+    while ( getline (myfile,line) )
+    {
+      cout << line << '\n';
+      
+      /a/b
+      for(int i =0; i < line.len(); i++){
+        if() // check if exists, traverse its map
+        else // create it inode, and give it an empty map
+      }
+      Inode<Directory>* iNode = new Inode<Directory>(...);
+    }
+    myfile.close();
+  }
+  else cout << "Unable to open file"; 
+}
+
+
+void preserveRecursive ( Inode<Directory>* ind, string s, ofstream& store) {
   int count = 0;
   string old_s = s;
-  for(auto it = ind->file->theMap.begin(); it != ind->file->theMap.end(); ++it) {
+  for(auto it = ind->file->theMap.begin(); it != ind->file->theMap.end(); ++it) 
+  {
 	++count;
-	if(it->second->type() == "dir") {
-      if(!dynamic_cast<Inode<Directory>*>(it->second)->file->theMap.empty()) {
-	    if(ind->file->theMap.size() != count) {
-		  store << old_s << it->first;// << " " << it->second->show();
-		  s = old_s + ",";
-		}
-	    else {
-		  store <<  old_s << it->first;// << " " << it->second->show();
-		  s = old_s + ",";
-		}
-	  }
-	  else {
-	    if(ind->file->theMap.size() != count) store <<  old_s << it->first;// << " " << it->second->show(); // dir content
-	    else store <<  old_s << it->first << ";" << endl;//<< it->second->show();
-	  }
-	  preserveRecursive(dynamic_cast<Inode<Directory>*>(it->second), level+1, s, store);
+	if(it->second == root->file->theMap["Apps"]) {
+		continue;
 	}
-	else if(ind->file->theMap.size() != count) store <<  old_s << it->first;// << " " << it->second->show(); // dir content
-	else store <<  old_s << it->first << ";" << endl;// << it->second->show();
+	else if(it->second->type() == "dir") {
+	  old_s = pwdStr(dynamic_cast<Inode<Directory>*>(it->second));
+	  store << old_s << ";" << it->second->type() << endl ;
+	  
+	  if(dynamic_cast<Inode<Directory>*>(it->second)->file->theMap.size() != 0)
+	    preserveRecursive(dynamic_cast<Inode<Directory>*>(it->second), old_s, store);
+	}
+	else if(it->second->type() == "app") {
+		continue;
+	}
+	else {
+	  store << s + "/" + it->first << ";" << it->second->type() << endl ;
+	}
   }
   return;
 
 }
 
-void preserve ( Inode<Directory>* ind, int level, string s) {
+
+
+void preserve ( Inode<Directory>* ind, string s) {
   ofstream store ("info.txt");
   if (store.is_open())
   {
-    preserveRecursive(ind, level, s, store);
+    preserveRecursive(ind, s, store);
 	store.close();
    }
   else cout << "Unable to open file";	
   return;
 }
 
-
 int tree( Args tok ){
   cout << "." << endl;
-  TreeDFS(wdi, 0, "");
+  TreeDFS(wdi, "");
   return 0;
 }
 
@@ -543,33 +599,43 @@ int mkdir( Args tok ) {
     // Added Directory Already Exist
     if(dir_ptr->file->theMap.find(su.lastSeg) != dir_ptr->file->theMap.end()) { // Added checks for . & .. directories
       cerr << "mkdir: File exists\n";
-	  return -1;
     }
-    Directory* d = dir_ptr->file;
-    Directory* sudir = new Directory();
-    d->mk( su.lastSeg, sudir );
-    sudir->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
-    sudir->current = dynamic_cast<Inode<Directory>*>(d->theMap[su.lastSeg]);
-	v.erase(v.begin()+1);
+	 else {
+      Directory* d = dir_ptr->file;
+      Directory* sudir = new Directory();
+      d->mk( su.lastSeg, sudir );
+      sudir->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
+      sudir->current = dynamic_cast<Inode<Directory>*>(d->theMap[su.lastSeg]);
+	 }
+	   v.erase(v.begin()+1);
   }
   return 0;
 }   
 
 
 int rmdir( Args tok ) {
+  if ( tok.size() < 2 ) {
+    cerr << "rmdir: missing operand\n";
+    // cerr << "try `mkdir -- help' for more information";
+    return -1;
+  }
   SetUp su( tok );
+  if ( su.error ) return -1;
+  if(su.b->type() != "dir") { // Added checks for directories
+      cerr << "rmdir: invalid directory name\n";
+	  return -1;
+    }
   Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su.ind);
   if ( ! dir_ptr ) { 
-    cerr << "rmdir: failed to remove `" << tok[0] 
+    cerr << "rmdir: failed to remove '" << tok[0] 
          << "'; no such file or directory.\n";
-  } else if (dir_ptr->file->theMap.find(su.lastSeg) == dir_ptr->file->theMap.end() || dynamic_cast<Inode<Directory>*>(dir_ptr->file->theMap[su.lastSeg])->type() != "dir") {  // oops: if not there. added directory check
-    cerr << "rmdir: failed to remove `" << su.lastSeg
-         << "'; no such file or directory.\n";
-  } else if (dynamic_cast<Inode<Directory>*>(dir_ptr->file->theMap[su.lastSeg])->file->theMap.size() != 0) { // added empty check
-    cerr << "rmdir: failed to remove `" << su.lastSeg
+  } else if ( dynamic_cast<Inode<Directory>*>(su.b)->file->theMap.size() != 0 ) { 
+    cerr << "rmdir: failed to remove '" << tok[0] 
          << "'; directory is not empty.\n";
-  }
-  else {
+  } else if (dir_ptr->file->theMap.find(su.lastSeg) == dir_ptr->file->theMap.end() || dynamic_cast<Inode<Directory>*>(dir_ptr->file->theMap[su.lastSeg])->type() != "dir") {  // oops: if not there. added directory check
+    cerr << "rmdir: failed to remove '" << su.lastSeg
+         << "'; no such file or directory.\n";
+  } else {
     dir_ptr->file->rm(su.lastSeg);
   }
 }
@@ -590,7 +656,7 @@ int rm( Args tok ) {
 }
 
 int exit( Args tok ) {
-  preserve(root, 0, "");	
+   preserve(root, "");
   _exit(0);
 }
 
@@ -609,7 +675,7 @@ map<string, App*> apps = {
 
 
 int main( int argc, char* argv[] ) {
-	
+  reload("info.txt");
   root->file = new Directory;   // OOPS!!! review this.
   Directory* appdir = new Directory(); //Update to put apps in a directory
   root->file->mk("Apps", appdir); //Update to put apps in a directory
@@ -647,7 +713,7 @@ int main( int argc, char* argv[] ) {
       cerr << "Instruction " << cmd << " not implemented.\n";
     }
   }
-  preserve(root, 0, "");	
+  preserve(root, "");	
 
   cout << "exit" << endl;
   return 0;                                                  // exit.
