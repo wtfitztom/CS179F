@@ -23,6 +23,9 @@ Tuesday October 18th: Met up and had some discussion on how to preserve the file
 
 Wednesday October 19th: We meet up and worked on printing out a tree for debugging purposes, similiar to the tree command on linux. We have it down pretty well but it needs a bit of fine tuning. Also, we discussed a bit about how we need to deal with Open File Tables, how to know when a file is open/closed, hardlinks, and also more about preserving a file system as the INode is an INode*. We also have to deal with devices which we are unsure of how to do right now.
 
+Thursday, October 20th: We tried to implement our write out to file to preserve our filesystem. We figured out how to store the path.
+
+Friday, October 21th: We were able to read back in the file and reconstruct the filesystem.
 
 Design Decisions:
 1. Making directories a Map in INode -> having directories represented like in Unix.
