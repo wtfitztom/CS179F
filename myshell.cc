@@ -241,7 +241,6 @@ int main( int argc, char* argv[] ) {
     string temp = "";
     getline( cin, temp );
     cout.flush();
-    if ( temp == "exit" ) break;                             // exit.
 
     stringstream ss(temp);      // split temp at white spaces into v.
     while ( ss ) {

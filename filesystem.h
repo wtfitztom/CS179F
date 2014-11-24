@@ -161,6 +161,7 @@ public:
 
   template<typename T>                               
   int mk( string s, T* x ) {
+	cout << s << ": " << endl;
     Inode<T>* ind = new Inode<T>(x);
     theMap[s] = ind;
   }
@@ -362,6 +363,12 @@ public:
   } // end of constructor
 };
 
+void echo_1( vector<string> v ) { for( auto it : v ) cerr <<  it << endl; }
+
+int echo (Args tok) {
+	echo_1(tok);
+  return 0;
+}
 void TreeDFS ( Inode<Directory>* ind, string s) {
   int count = 0;
   string old_s = s;
@@ -650,7 +657,8 @@ map<string, App*> apps = {
   pair<const string, App*>("cd", cd),
   pair<const string, App*>("touch", touch),
   pair<const string, App*>("pwd", pwd),
-  pair<const string, App*>("tree", tree)
+  pair<const string, App*>("tree", tree),
+  pair<const string, App*>("echo", echo)
 };  // app maps mames to their implementations.
 
 
