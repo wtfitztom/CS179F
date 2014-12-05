@@ -193,10 +193,6 @@ class shellThread : public Thread {
        
 };
 
-
-
-
-
 int doit( vector<string> tok ) { 
   // Executes a parsed command line returning command's exit status.
 
@@ -214,13 +210,13 @@ int doit( vector<string> tok ) {
   }
 
   // fork.  And, wait if child to run in foreground.
-  if ( pid_t kidpid = fork() )
+  /*if ( pid_t kidpid = fork() )
   {      
     if ( errno || tok.back() == "&") return 0;
     int temp = 0;               
     waitpid( kidpid, &temp, 0 );
     return ( WIFEXITED(temp) ) ? WEXITSTATUS(temp) : -1;
-  }
+  }*/
   // You're the child.
   shellThread thread1 ("Temp name", INT_MAX,tok);
   thread1.join();
