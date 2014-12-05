@@ -1,268 +1,778 @@
-#include <string>
+// Here is the latest version as of noon Saturday.  It implements the
+// following commands: exit mkdir ls rmdir rm cd all of which have
+// pass a superfical level of testing.  For diagnostic purposes, their
+// outputs are a bit different from Standard Unix-systems output.
+
+// Problems: 
+// * mkdir foo/junk works even if foo does not exit but puts
+//   junk into current dir.
+
 #include <iostream>
+#include <fstream>
 #include <vector>
-#include <list>
+#include <queue>
+#include <map>
+#include <string>
 #include <sstream>
-#include <sys/wait.h>
-#include <errno.h>                       // man errno for information
+#include <string.h>
+#include <utility>
+#include <vector>
 #include <cassert>
-//#include <thread>
 #include <unistd.h>
-#include <cerrno>
-#include <cstring>
-#include <stdlib.h>
-#include <stdlib.h>
-#include <cstring>
-#include <stdio.h>
-#include <readline/readline.h>
-#include <readline/history.h>
-#include "thread.h"
-#include <mutex>
-#include "filesystem.h"
+#include <ctime>
+#include <iomanip>
 
-using namespace filesystem;
 using namespace std;
+namespace filesystem {
+//==================== here are some utilities =====================
 
-#define each(I) for( typeof((I).begin()) it=(I).begin(); it!=(I).end(); ++it )
-
-/*
-void testCompleteMe(){
-    char *complete = readline("");
-    cout << string(complete);
-    //printf("%s\n", complete);
-    delete complete;
+bool correct_pathname(const string& path) {
+size_t first_wrong = path.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz123456789./");
+return first_wrong == string::npos;
 }
-*/
-int doit( vector<string> tok );
 
-struct Devices{
-  int deviceNumber;
-  string driverName;
-};
-
-struct openFileTable{
-  Devices *ptr; //pointer to device
-  bool write;
-  bool read;
-};
-
-
-struct processTable{
-    pid_t pid;
-    pid_t *ppid;
-    openFileTable opfile[32];
-   
-    void setid(pid_t p, pid_t pp){pid = p; ppid = &pp;}
-    void print(){
-        cout << "[PID: " << pid << "][PPID: " << *ppid << "]" << endl;
+// a simple utility for splitting strings at a find-pattern.
+inline vector<string>
+split( const string s, const string pat ) {
+  // Returns the vector of fragments (substrings) obtained by
+  // splitting s at occurrences of pat.  Use C++'s string::find. If s
+  // begins with an occurrence of pat, it has an empty-string
+  // fragment.  Similarly for trailing occurrences of pat.  After each
+  // occurrence of pat, scanning resumes at the following character,
+  // if any.
+  vector<string> v;
+  int i = 0;
+  for (;;) {
+    int j = s.find(pat,i);
+    if ( j == (int) string::npos ) {          // pat not found.
+      v.push_back( s.substr(i) );      // append final segment.
+      return v;
     }
+    v.push_back( s.substr(i,j-i) ); // append nonfinal segment.
+    i = j + pat.size();                     // next valus of i.
+  }
+}
+
+inline  // joins vector of strings separating via a pattern.
+string
+join( const vector<string> v, const string pat, int start=0, int end=-1 ) {
+  if ( end < 0 ) end += v.size();
+  //  assert ( start < v.size() );   // should throw an exception.
+  if ( start >= v.size() ) return "";
+  string s = v[start++];
+  for ( int i = start; i <= end; ++i )  s += pat + v[i];
+  return s;
+}
+
+template< typename T > string T2a( T x ) {
+  // A simple utility to turn things of type T into strings
+  stringstream ss;
+  ss << x;
+  return ss.str();
+}
+
+template< typename T > T a2T( string x ) {
+  // A simple utility to turn strings into things of type T
+  // Must be tagged with the desired type, e.g., a2T<float>(35)
+  stringstream ss(x);
+  T t;
+  ss >> t;
+  return t;
+}
+
+//===================== end of utilities =========================
+
+typedef vector<string> Args;  // could as well use list<string>
+typedef int App(Args);  // apps take a vector of strings and return an int.
+
+// some forward declarations
+class Device;
+class Directory;
+
+
+class InodeBase {
+public: 
+  virtual string type() = 0;
+  virtual string show() = 0;
+  virtual void ls() = 0; 
+  static int count;
+  time_t a_time = time(0);
+  time_t c_time = time(0);
+  time_t m_time = time(0);
+  int openCount = 0;
+  int linkCount = 1;
+  bool readable, writeable;
+  InodeBase() { idnum = count ++;}  
+  int idnum;
+  
+  int unlink() { 
+    assert( linkCount > 0 );
+    -- linkCount;
+    cleanup();
+  }
+  void cleanup() {
+    if ( ! openCount && ! linkCount ) {
+      // throwstuff away
+    }
+  }
+};
+int InodeBase::count = 0;
+
+template< typename T >
+class Inode : public InodeBase {
 };
 
-thread_local processTable tmp;
-
-int doit( vector<string> tok );
-class shellThread : public Thread {
-    vector<string> tok;
-    int priority() {return Thread::priority(); }
-    void action (){
-      // Option processing: (1) redirect I/O as requested and (2) build 
-      // a C-style list of arguments, i.e., an array of pointers to
-      // C-strings, terminated by an occurrence of the null poiinter.
-      //   
-      //
-        string progname = tok[0];
-       
-        tmp.setid(getpid(), getppid());
-        cout << "PID: " << tmp.pid << " PPID: " << *tmp.ppid << endl;
-        //testCompleteMe();
-        char* arglist[ 1 + tok.size() ];   // "1+" for a terminating null ptr.
-        int argct = 0;
-        for ( int i = 0; i != tok.size(); ++i ) {
-     
-      string progname = tok[0];
-      char* arglist[ 1 + tok.size() ];   // "1+" for a terminating null ptr.
-      int argct = 0;
-      for ( int i = 0; i != tok.size(); ++i ) {
-            if      ( tok[i] == "&" || tok[i] == ";" ) break;   // arglist done.
-            else if ( tok[i] == "<"  ) freopen( tok[++i].c_str(), "r", stdin  );
-            else if ( tok[i] == ">"  ) freopen( tok[++i].c_str(), "w", stdout );
-            else if ( tok[i] == ">>" ) freopen( tok[++i].c_str(), "a", stdout );
-            else if ( tok[i] == "2>" ) freopen( tok[++i].c_str(), "w", stderr );
-            else if ( tok[i] == "|"  ) {                   // create a pipeline.
-              int mypipe[2];  
-              int& pipe_out = mypipe[0];
-              int& pipe_in  = mypipe[1];
-              // Find two available ports and create a pipe between them, and
-              // store output portuntitled folder# into pipe_out and input port# to pipe_in.
-              if ( pipe( mypipe ) ) {     // All that is done here by pipe().
-                //cerr << "myshell: " << strerror(errno) << endl; // report err
-                return;
-              } else if ( fork() ) {  // you're the parent and consumer here.
-            dup2( pipe_out, STDIN_FILENO ); // connect pipe_out to stdin.
-                close( pipe_out );        // close original pipe connections.
-                close( pipe_in );  
-                while ( tok.front() != "|" ) tok.erase( tok.begin() );
-                tok.erase(tok.begin());                    // get rid of "|".
-                exit( doit( tok ) );        // recurse on what's left of tok.
-              } else {                 // you're the child and producer here.
-                dup2( pipe_in, STDOUT_FILENO ); // connect pipe_in to stdout.
-                close( pipe_out );        // close original pipe connections.
-                close( pipe_in );
-                break;                      // exec with the current arglist.
-              }
-            } else {           // add this token a C-style argv for execvp().
-              // Append tok[i].c_str() to arglist
-              arglist[argct] = new char[1+tok[i].size()]; 
-              strcpy( arglist[argct], tok[i].c_str() );
-              // arglist[argct] = const_cast<char*>( tok[i].c_str() );
-              // Per C++2003, Section 21.3.7: "Nor shall the program treat
-              // the returned value [ of .c_str() ] as a valid pointer value
-              // after any subsequent call to a non-const member function of
-              // basic_string that designates the same object as this."
-              // And, there are no subsequent operations on these strings.
-              arglist[++argct] = 0; // C-lists of strings end w null pointer.
-            }
-          }
-         
-
-          // tilde expansion
-          if ( progname[0] == '~' ) progname = getenv("HOME")+progname.substr(1);
-//          execvp( progname.c_str(), arglist );         // execute the command.
-
-		  Inode<App>* junk = static_cast<Inode<App>*>((dynamic_cast<Inode<Directory>*>(root->file->theMap["bin"])->file->theMap)[tok[0]] ); //Update to put apps in a directory
-		    if ( ! junk ) {
-			  (dynamic_cast<Inode<Directory>*>(root->file->theMap["bin"])->file->theMap).erase(tok[0]);
-			  cerr << "shell: " << tok[0] << " command not found\n";
-			  continue;
-			}
-			App* thisApp = static_cast<App*>(junk->file);
-			if ( thisApp != 0 ) {
-			  thisApp(tok);          // if possible, apply cmd to its args.
-			} else { 
-			  cerr << "Instruction " << tok[0] << " not implemented.\n";
-			}
-
-
-          // If we get here, an error occurred in the child's attempt to exec.
-          //cerr << "myshell: " << strerror(errno) << endl;     // report error.
-          exit(0);                  // child must not return, so must die now.
-        }
-    }
-   
-   
-    /*
-    void action()
-    {
-       
-        char* argv[exec_data.size()+1];
-        int i = 0;
-        for ( i = 0; i < exec_data.size(); ++i)
-        {
-            argv[i] = new char ('\0');
-            strcpy(argv[i], exec_data[i].c_str());
-        }
-        argv[i] = 0; // Null terminating argv for execvp
-        int pid;
-        if ((pid = fork()) < 0) { // Fork
-            cerr << "Fork failed.\n";
-            exit(1);
-        }
-        else if (pid == 0) {      // Child   
-            if (execvp(argv[0], argv) < 0) {    
-                cerr << "Exec failed.\n";
-                exit(1);
-            }
-        }
-        else // Parent
-        {
-            //Delete all the dynamically allocated pointers for this argv
-            for (int i = 0 ; i < exec_data.size() ; ++i)
-            {
-                delete argv[i];
-            }
-            cerr << Me() << " has executed the command \n";
-            //threadGraveyard.thread_cancel(); // cancel parent thread;
-        }
-    }
-    */
-   
-    public:
-        shellThread(string name, int priority, vector<string> v)
-        :tok(v), Thread(name, priority)
-        {}
-       
+template<>
+class Inode<App> : public InodeBase {
+public:
+  App* file;
+  Inode ( App* x ) : file(x) {}
+  string type() { return "app"; }
+  string show() {   // a simple diagnostic aid
+    return "This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " at " + ctime(&m_time); 
+  } 
+  void ls() { cout << show(); }
 };
 
-int doit( vector<string> tok ) { 
-  // Executes a parsed command line returning command's exit status.
 
-  if ( tok.size() == 0 ) return 0;             // nothing to be done.
+class Directory {
+public:
+  Inode<Directory>* parent = NULL;
+  Inode<Directory>* current = parent;
 
-  string progname = tok[0]; 
-  assert( progname != "" );
+  // directories point to inodes, which in turn point to files.
 
-  // A child process can't cd for its parent.
-  if ( progname == "cd" ) {                    // chdir() and return.
-    chdir( tok.size() > 1 ? tok[1].c_str() : getenv("HOME") );
-    if ( ! errno ) return 0;
-    cerr << "myshell: cd: " << strerror(errno) << endl;
+  // map<string, Inode*> theMap;  // the data for this directory
+  map<string, InodeBase*> theMap;  // the data for this directory
+
+  Directory() { theMap.clear(); }
+
+  void ls() {   
+    // for (auto& it : theMap) { 
+    for (auto it = theMap.begin(); it != theMap.end(); ++it ) { 
+      cout << it->first << " " << it->second->show();
+      //if ( it->second ) cout << setw(14) << left << it->first; 
+    }
+    if ( ! theMap.size() ) cout << "Empty Map"<< endl;  // comment lin out
+	//else cout <<setw(1) << endl;
+  } 
+
+  int rm( string s ) { theMap.erase(s); }
+
+  template<typename T>                               
+  int mk( string s, T* x ) {
+	cout << s << ": " << endl;
+    Inode<T>* ind = new Inode<T>(x);
+    theMap[s] = ind;
+  }
+ 
+};
+
+
+template<>
+class Inode<Directory> : public InodeBase {
+public:
+  string type() { return "dir"; }
+  Directory* file;
+  Inode<Directory> ( Directory* x ) : file(x) {}
+  string show() {   // a simple diagnostic aid
+    return " This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " at " + ctime(&m_time); 
+  } 
+  void ls() { file->ls(); }
+};
+
+
+class File {
+public:
+  Inode<Directory>* parent = NULL;
+  string bytes;
+  string text;
+  File() {};
+
+  template<typename T>                               
+  int touch( string s, T* x ) {
+    Inode<T>* ind = new Inode<T>(x);
+    parent->file->theMap[s] = ind;
+  }
+};
+
+
+template<>
+class Inode<File> : public InodeBase {
+public:
+  string type() { return "file"; }
+  File* file;
+  
+  Inode<File> ( File* x ) : file(x) {}
+  string show() {   // a simple diagnostic aid
+    return " This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " at " + ctime(&m_time); 
+  } 
+  void ls() {}
+};
+
+
+
+//Inode<Directory>* root = new Inode<Directory>;
+Inode<Directory> temp( new Directory );  // creates new Directory 
+                                                 // and its inode
+Inode<Directory>* const root = &temp;  
+Inode<Directory>* wdi = root;       // Inode of working directory
+Directory* wd() { return wdi->file; }        // Working Directory
+
+
+// Inode<Directory>* search( string s ) {
+//   // To process a path name prefix, which should lead to a directory.
+//   // s is all of tok[0]
+//   // cerr << "search: s = " << s << endl; // Dignostic
+//   assert( s != "" );
+//   vector<string> v = split(s,"/");
+//   Inode<Directory>* ind = ( v[0] == "" ? root : wdi );
+//   stringstream prefix;
+//   queue<string> suffix;
+//   for ( auto it : v ) suffix.push( it ); // put everything onto a queue
+//   for (;;) {  // now iterate through that queue.
+//     while ( suffix.size() && suffix.front() == "" ) suffix.pop();
+//     if ( suffix.empty() ) return ind;
+//     string seg = suffix.front();
+//     suffix.pop();
+//     if ( prefix.str().size() != 0 ) prefix << "/";
+//     prefix << seg; 
+//     Directory* dir = dynamic_cast<Directory*>(ind->file);
+//     if ( ! dir ) {
+//       cerr << ": cannot access "<< prefix << ": Not a directory\n";
+//       return 0;
+//     }
+//     if ( (dir->theMap)[seg] != 0 ) {
+//       ind = dynamic_cast<Inode<Directory>*>( (dir->theMap)[seg] );
+//       if ( !ind ) {
+//         cerr << prefix.str() << ": No such file or directory\n";
+//         return 0;
+//       }
+//     }   
+//   }
+//   return 0;
+// }
+
+
+string current = "/";
+
+
+class SetUp {
+public:
+  string input = "";
+  int segCount = 0;
+  string firstSeg = "";
+  string next2lastSeg = "";
+  string lastSeg = "";
+  Inode<Directory>* ind = 0;
+  InodeBase* b = 0;
+  bool error = false;
+  string cmd;
+  vector<string> args;
+  void show() {  // Diagnostic
+    cerr << "input = " << input << endl;
+    cerr << "segcount = " << segCount << endl;
+    cerr << "firstSeg = " << firstSeg << endl;
+    cerr << "next2lastSeg = " << next2lastSeg << endl;
+    cerr << "lastSeg = " << lastSeg << endl;
+    cerr << "ind = " << T2a<int>(long(ind)) << endl;
+    cerr << "cmd = " << cmd << endl;
+    for ( auto it : args ) cerr << it << " ";
+    cerr << endl;
+  }
+  SetUp ( vector<string> args )   
+    : args(args),
+      cmd(args[0])
+  { input = args.size() > 1 ? args[1] : "";
+    if ( input == "" ) return;
+    vector< string > v = split( input, "/" );
+    segCount = v.size();
+    assert( segCount > 0 );
+    firstSeg = v.front();  
+    lastSeg = v.back();    // might be same as firstSeg
+    v.pop_back();
+    if ( segCount > 1 ) next2lastSeg = v.back();
+    ind = wdi;
+    queue<string> suffix;
+    stringstream prefix;
+    if ( segCount > 1 ) {  
+      if ( v[0] == "" ) ind = root;
+      for ( auto it : v ) suffix.push( it ); // put everything onto a queue.
+      for (;;) {                          // now iterate through that queue.
+        // must check each intermediated directory for existence.  FIX
+		while ( suffix.size() && suffix.front() == "" ) suffix.pop();
+		if ( suffix.empty() ) break;
+		string seg = suffix.front();
+		suffix.pop();
+		if ( prefix.str().size() != 0 ) prefix << "/";
+		prefix << seg; 
+		Directory* dir = dynamic_cast<Directory*>(ind->file);  
+		if ( ! dir ) {
+		  cerr << ": cannot access " << prefix.str() << ": Not a directory\n";
+		  break;
+		}
+		if (seg == ".") continue;
+		else if (seg == "..") {
+          if(ind->file->parent != NULL) ind = ind->file->parent;
+		}
+		else if ( dir->theMap.find(seg) != dir->theMap.end() ) {    // Added check so only valids can be added to map
+		  ind = dynamic_cast<Inode<Directory>*>( (dir->theMap)[seg] );
+		  if ( ! ind ) {
+			cerr << prefix.str() << ":1 No such file or directory\n";
+			break;
+		  }
+		}
+		else if ( cmd == "mkdir" || cmd == "touch") {
+		  cerr << cmd << ": cannot create directory `" << prefix.str() << "/" 
+		       << lastSeg << "':2 No such file or directory\n";
+		  error = true;
+		}  
+      }
+    }
+    if ( ! ind ) {
+      cerr << cmd <<": " << input << " not found\n"; 
+      error = true;
+      return;
+    }
+    b = ( lastSeg == "" ? ind : (ind->file->theMap.find(lastSeg) != ind->file->theMap.end() ? ind->file->theMap[lastSeg] : 0)); // Added if-statement so only valids can be added to map
+    if ( !b  && cmd != "mkdir" && cmd !="touch") {
+      if(lastSeg == "." && ind == root) { // Added checks for . & .. directories
+        lastSeg = "/";
+        b = root;
+      }
+      else if(lastSeg == ".." && ind != root) { // Added checks for . & .. directories
+        b = wdi->file->parent;
+		if(b == root) lastSeg = "/";
+		else {
+          for (auto it = dynamic_cast<Inode<Directory>*>(b)->file->parent->file->theMap.begin(); it != dynamic_cast<Inode<Directory>*>(b)->file->parent->file->theMap.end(); ++it )
+            if (it->second == b) lastSeg = it->first;
+		}
+      }
+      else if(lastSeg == ".." && ind == root) {
+        b = root;
+		lastSeg = "/";
+	  }
+      else if(lastSeg == ".") { // Added checks for . & .. directories
+        b = wdi->file->current;
+        lastSeg = current;
+      }
+      else {
+        cerr << lastSeg << ": No such file or directory\n";
+        error = true;
+      }
+    }
+
+  } // end of constructor
+};
+
+void echo_1( vector<string> v ) { for( auto it : v ) cerr <<  it << endl; }
+
+int echo (Args tok) {
+	echo_1(tok);
+  return 0;
+}
+void TreeDFS ( Inode<Directory>* ind, string s) {
+  int count = 0;
+  string old_s = s;
+  for(auto it = ind->file->theMap.begin(); it != ind->file->theMap.end(); ++it) {
+	++count;
+	if(it->second->type() == "dir") {
+      if(!dynamic_cast<Inode<Directory>*>(it->second)->file->theMap.empty()) {
+	    if(ind->file->theMap.size() != count) {
+		  cout << old_s << "├── " << it->first << " " << it->second->show();
+		  s = old_s + "│   ";
+		}
+	    else {
+		  cout <<  old_s << "└── " << it->first << " " << it->second->show();
+		  s = old_s + "    ";
+		}
+	  }
+	  else {
+	    if(ind->file->theMap.size() != count) cout <<  old_s << "├── " << it->first << " " << it->second->show();
+	    else cout <<  old_s << "└── " << it->first << " " << it->second->show();
+	  }
+	  TreeDFS(dynamic_cast<Inode<Directory>*>(it->second), s);
+	}
+	else if(ind->file->theMap.size() != count) {
+	  if(it->second->type() == "file") cout <<  old_s << "├── " << "\033[0;32m" << it->first << " " << it->second->show() << "\033[0;30m";
+	  else cout <<  old_s << "├── " << it->first << " " << it->second->show();
+	}
+	else {
+	  if(it->second->type() == "file") cout <<  old_s << "└── " << "\033[0;32m" << it->first << " " << it->second->show() << "\033[0;30m";
+	  else cout <<  old_s << "└── " << it->first << " " << it->second->show();
+	}
+  }
+  return;
+}
+
+
+int pwd( Args tok ) {
+  vector<string> temp;
+  Inode<Directory>* ind = wdi->file->parent;
+  Inode<Directory>* indb = wdi;
+  while( ind ) {
+    for(auto it = ind->file->theMap.begin(); it != ind->file->theMap.end(); ++it ) {
+	  if(it->second == indb) {
+		temp.push_back(it->first);
+		temp.push_back("/");
+	    break;
+	  }
+	}
+	indb = ind;
+	ind = ind->file->parent;
+  }
+  if(temp.empty()) temp.push_back("/");
+  cout << "Current Directory is: ";
+  while (!temp.empty()) {
+    cout << temp[temp.size()-1];
+	temp.pop_back();
+  }
+  cout << endl;
+  return 0;
+}
+
+int tree( Args tok ){
+  cout << "." << endl;
+  TreeDFS(wdi, "");
+  return 0;
+}
+
+int touch( Args tok ) {
+  if ( tok.size() < 2 ) {
+    cerr << "touch: missing operand\n";
+    // cerr << "try `touch -- help' for more information";
     return -1;
   }
-
-  // fork.  And, wait if child to run in foreground.
-  /*if ( pid_t kidpid = fork() )
-  {      
-    if ( errno || tok.back() == "&") return 0;
-    int temp = 0;               
-    waitpid( kidpid, &temp, 0 );
-    return ( WIFEXITED(temp) ) ? WEXITSTATUS(temp) : -1;
-  }*/
-  // You're the child.
-  shellThread thread1 ("Temp name", INT_MAX,tok);
-  thread1.join();
- 
-
-}
-
-
-
-
-int main( int argc, char* argv[] ) {
-///*
-  FSInit("info.txt");
-  while ( ! cin.eof() ) {
-    cout << "? " ;                                         // prompt.
-    //testCompleteMe();
-    // testCompleteMe();
-    string temp = "";
-    getline( cin, temp );
-    cout.flush();
-
-    stringstream ss(temp);      // split temp at white spaces into v.
-    while ( ss ) {
-      vector<string> v;
-      string s;
-      while ( ss >> s ) {
-        v.push_back(s);
-        if ( s == "&" || s == ";" ) break;   
-      }
-     // thread t(do_work);
-      int status = doit( v );           // FIX make status available.
-      //if ( errno ) cerr << "myshell: " << strerror(errno) << endl;
+    SetUp su( tok );
+    if ( su.error ) return -1;
+    // Need to fix this in the Setup, but shouldn't check for "" here.
+    if(su.lastSeg == "") {
+      cerr << "touch: missing operand\n";
+	  return -1;
     }
-
-  }
-  cout << "exit" << endl;
-  return 0;                                                  // exit.
-  //*/
-//    testCompleteMe();
+    if(!su.b) {
+      Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su.ind);
+      Directory* d = dir_ptr->file;
+      File* sufile = new File();
+      sufile->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
+      sufile->touch( su.lastSeg, sufile );
+    }
+    else {
+      su.b->m_time = time(0);
+      su.b->a_time = su.b->m_time;
+    }
+  return 0;
 }
 
 
-///////////////// Diagnostic Tools /////////////////////////
 
-   // cout.flush();
-   // if ( WIFEXITED(status) ) { // reports exit status of proc.
-   //   cout << "exit status = " << WEXITSTATUS(status) << endl;
-   // }
+//~ int fileText(Args tok)
+//~ {
+	//~ cout << "tok [3] : " << tok[2] << endl;
+	//~ // tok[1] the file
+	//~ string fileText;
+	//~ Inode<File>* theFile  =  dynamic_cast<Inode<File>*>( wdi->file->theMap.find(tok[1])->second);
+	//~ for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
+	//~ theFile->file->text = fileText;
+	//~ 
+//~ }
 
+int write(Args tok)
+{
+	cout << "tok [3] : " << tok[2] << endl;
+	// tok[1] the file
+	SetUp su(tok);
+	if(su.error) return -1;
+	string fileText;
+	Inode<File>* theFile  =  dynamic_cast<Inode<File>*>( su.ind->file->theMap.find(tok[1])->second);
+	for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
+	theFile->file->text = fileText;
+	cout << "FILETEXT: " << fileText << endl;
+	
+}
+
+int read(Args tok)
+{
+	SetUp su(tok);
+	Inode<File>* f  =  dynamic_cast<Inode<File>*>( su.ind->file->theMap.find(tok[1])->second);
+	cout << "text is: " << f->file->text << endl;
+}
+
+int cd( Args tok ) {
+  string home = "/";  // root is everybody's home for now.
+  if ( tok.size() == 1 ) tok.push_back( home );
+  SetUp su( tok );
+  if ( su.error ) return -1;
+  if ( su.b->type() != "dir" ) {
+    cerr << "shell: cd:" << su.lastSeg << ": Not a directory\n";
+    return -1;
+  }
+  wdi = dynamic_cast<Inode<Directory>*>(su.b);
+  current = ( su.lastSeg != "" ? su.lastSeg : su.next2lastSeg +"/" );
+  return 0;
+}
+
+
+int ls( Args tok ) {
+  if ( tok.size() == 1 ) {
+    wd()->ls();
+    return 0;
+  }
+  //cerr << "tok size = " << tok.size() << "#" << tok[0] <<"#" << endl;
+  SetUp su( tok );
+  // cerr << su.cmd << endl;
+  assert(su.b);
+  if ( su.b->type() != "dir" ) {
+    //assert(false);
+    cout << "cmd: " << su.lastSeg << ": not a directory\n";
+    return -1;
+  }
+  // assert(false);
+  su.b->ls();  
+  // assert(false);
+  return 0;
+}
+
+
+int mkdir( Args tok ) {
+  if ( !correct_pathname(tok[1]) ) {
+    cerr << "mkdir: invalid pathname\n";
+    return -1;
+  }
+  else if ( tok.size() < 2 ) {
+    cerr << "mkdir: missing operand\n";
+    // cerr << "try `mkdir -- help' for more information";
+    return -1;
+  }
+    SetUp su( tok );
+    if ( su.error ) return -1;
+    // Need to fix this in the Setup, but shouldn't check for "" here.
+    if(su.lastSeg == "." || su.lastSeg == ".." || (su.lastSeg).find(".") != std::string::npos || su.lastSeg == "") { // Added checks for . & .. directories
+      cerr << "mkdir: invalid directory name\n";
+	  return -1;
+    }
+    Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su.ind);
+    // Added Directory Already Exist
+    if(dir_ptr->file->theMap.find(su.lastSeg) != dir_ptr->file->theMap.end()) { // Added checks for . & .. directories
+      cerr << "mkdir: File exists\n";
+    }
+	 else {
+      Directory* d = dir_ptr->file;
+      Directory* sudir = new Directory();
+      d->mk( su.lastSeg, sudir );
+      sudir->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
+      sudir->current = dynamic_cast<Inode<Directory>*>(d->theMap[su.lastSeg]);
+	 }
+	 //TreeDFS(root, "");
+  return 0;
+}   
+
+
+int rmdir( Args tok ) {
+  if ( tok.size() < 2 ) {
+    cerr << "rmdir: missing operand\n";
+    // cerr << "try `mkdir -- help' for more information";
+    return -1;
+  }
+  SetUp su( tok );
+  if ( su.error ) return -1;
+  if(su.b->type() != "dir") { // Added checks for directories
+      cerr << "rmdir: invalid directory name\n";
+	  return -1;
+    }
+  Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su.ind);
+  if ( ! dir_ptr ) { 
+    cerr << "rmdir: failed to remove '" << tok[0] 
+         << "'; no such file or directory.\n";
+  } else if ( dynamic_cast<Inode<Directory>*>(su.b)->file->theMap.size() != 0 ) { 
+    cerr << "rmdir: failed to remove '" << tok[0] 
+         << "'; directory is not empty.\n";
+  } else if (dir_ptr->file->theMap.find(su.lastSeg) == dir_ptr->file->theMap.end() || dynamic_cast<Inode<Directory>*>(dir_ptr->file->theMap[su.lastSeg])->type() != "dir") {  // oops: if not there. added directory check
+    cerr << "rmdir: failed to remove '" << su.lastSeg
+         << "'; no such file or directory.\n";
+  } else {
+    dir_ptr->file->rm(su.lastSeg);
+  }
+}
+
+
+int rm( Args tok ) {
+  SetUp su( tok );
+  if ( su.ind->file->theMap[su.lastSeg]->type() == "dir" ) {  
+    cout << "rm: cannot remove `"<< su.lastSeg << "': is a  directory\n";
+    return 0;
+  } 
+  cout << "rm: remove regular file `" << su.lastSeg << "'? ";
+  string response;
+  getline( cin, response );            // read user's response.
+  if ( response[0] != 'y' && response[0] != 'Y' )  return 0;
+  su.ind->file->rm(su.lastSeg);
+  return 0;
+}
+
+
+string pwdStr( Inode<Directory>* indb ) {
+	string pwdStr = "";
+  vector<string> temp;
+  Inode<Directory>* ind = indb->file->parent;
+  while( ind ) {
+    for(auto it = ind->file->theMap.begin(); it != ind->file->theMap.end(); ++it ) {
+	  if(it->second == indb) {
+		temp.push_back(it->first);
+		temp.push_back("/");
+	    break;
+	  }
+	}
+	indb = ind;
+	ind = ind->file->parent;
+  }
+  if(temp.empty()) temp.push_back("/");
+  //cout << "Current Directory is: ";
+  while (!temp.empty()) {
+    pwdStr += temp[temp.size()-1];
+	temp.pop_back();
+  }
+  return pwdStr;
+}
+
+
+
+void preserveRecursive ( Inode<Directory>* ind, string s, ofstream& store) {
+  int count = 0;
+  string old_s = s;
+  for(auto it = ind->file->theMap.begin(); it != ind->file->theMap.end(); ++it) 
+  {
+	++count;
+	if(it->second == root->file->theMap["bin"]) {
+		continue;
+	}
+	else if(it->second->type() == "dir") {
+	  old_s = pwdStr(dynamic_cast<Inode<Directory>*>(it->second));
+	  store << it->second->type() << ";" << old_s << ";" << it->second->c_time << ";" << it->second->m_time << ";" << it->second->a_time << endl ;
+	  
+	  if(dynamic_cast<Inode<Directory>*>(it->second)->file->theMap.size() != 0)
+	    preserveRecursive(dynamic_cast<Inode<Directory>*>(it->second), old_s, store);
+	}
+	else if(it->second->type() == "app") {
+		continue;
+	}
+	else if(it->second->type() == "file"){
+		Inode<File>* f  =  dynamic_cast<Inode<File>*>( it->second);
+		store << it->second->type() << ";" << s + "/" + it->first << ";" << it->second->c_time << ";" << it->second->m_time << ";" << it->second->a_time << ";" << f->file->text << endl ;
+	}
+	else {
+	  store << it->second->type() << ";" << s + "/" + it->first << ";" << it->second->c_time << ";" << it->second->m_time << ";" << it->second->a_time << endl ;
+	}
+  }
+  return;
+
+}
+
+
+
+void preserve ( Inode<Directory>* ind, string s) {
+  ofstream store ("info.txt");
+  if (store.is_open())
+  {
+    preserveRecursive(ind, s, store);
+	store.close();
+   }
+  else cout << "info.txt does not exist.  No pre-directory to load." << endl;	
+  return;
+}
+
+
+
+int exit( Args tok ) {
+   preserve(root, "");
+  _exit(0);
+}
+
+
+map<string, App*> apps = {
+  pair<const string, App*>("ls", ls),
+  pair<const string, App*>("mkdir", mkdir),
+  pair<const string, App*>("rmdir", rmdir),
+  pair<const string, App*>("exit", exit),
+  pair<const string, App*>("rm", rm),
+  pair<const string, App*>("cd", cd),
+  pair<const string, App*>("touch", touch),
+  pair<const string, App*>("pwd", pwd),
+  pair<const string, App*>("tree", tree),
+  pair<const string, App*>("echo", echo),
+  pair<const string, App*>("write", write),
+  pair<const string, App*>("read",read)
+  
+};  // app maps mames to their implementations.
+
+
+
+
+void FSInit(string file){
+  root->file = new Directory;   // OOPS!!! review this.
+  Directory* appdir = new Directory(); //Update to put apps in a directory
+  root->file->mk("bin", appdir); //Update to put apps in a directory
+  appdir->parent = root; //Update to put apps in a directory
+  appdir->current = dynamic_cast<Inode<Directory>*>(root->file->theMap["bin"]); //Update to put apps in a directory
+  
+  Directory* devdir = new Directory(); //Update to put devs in a directory
+  root->file->mk("dev", devdir);//Update to put devss in a directory
+  devdir->parent = root; //Update to set dev devices parent as root
+  devdir -> current = dynamic_cast<Inode<Directory>*>(root->file->theMap["dev"]);
+  
+  for( auto it : apps ) {
+    Inode<App>* temp(new Inode<App>(it.second));
+    InodeBase* junk = static_cast<InodeBase*>(temp);
+    //    InodeBase* junk = temp;
+    dynamic_cast<Inode<Directory>*>(	wd()->theMap["bin"])->file->theMap[it.first] = new Inode<App>(it.second);
+  }
+  Inode<Directory>* r = root;
+  string line = "";
+  ifstream myfile (file);
+  if (myfile.is_open())
+  {
+    while ( getline (myfile,line) )
+    {
+      cout << line << '\n';
+      stringstream ss(line);             // split temp at white spaces.
+      vector<string> rfile;          // then get its cmd-line arguments.
+      string s;
+      while( ss >> s ) rfile.push_back(s);
+      vector<string> filepaths;
+      for(auto it = rfile.begin(); it != rfile.end(); ++it) {
+        filepaths = split(*it,";");
+	  }
+	  if(filepaths[0] == "dir") {
+	    filepaths[0] = "mkdir";
+	    mkdir( filepaths );
+	  }
+	  else if(filepaths[0] == "file") {
+	    filepaths[0] = "touch";
+	    touch( filepaths );
+	    //filepaths[0] = "write";
+	    
+	   // cout << "HELLO!" << substr( << endl;
+	    vector <string> args;
+	    vector<string> temp_args;
+	    temp_args = split(filepaths[1], "/" );
+	    
+	    args.push_back("write");
+	    string filename = temp_args[temp_args.size()-1];
+	    args.push_back(filename);
+	   // args.push_back(" ");
+	    //read(filename);
+	    args.push_back(filepaths[filepaths.size() -1] );
+	   //  cd(filepaths[1]);
+	    //Inode<File>* f  =  dynamic_cast<Inode<File>*>( wdi->file->theMap.find(tok[1])->second);
+	    //cout << "TEST" << f->file->text;
+	    //write(args);
+	  }
+	  else {
+	  }
+    }
+    myfile.close();
+  }
+  else cout << "Unable to open file"; 
+}
+
+}
