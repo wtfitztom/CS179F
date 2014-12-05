@@ -186,6 +186,7 @@ class File {
 public:
   Inode<Directory>* parent = NULL;
   string bytes;
+  string text;
   File() {};
 
   template<typename T>                               
@@ -201,7 +202,7 @@ class Inode<File> : public InodeBase {
 public:
   string type() { return "file"; }
   File* file;
-  string text;
+  
   Inode<File> ( File* x ) : file(x) {}
   string show() {   // a simple diagnostic aid
     return " This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " at " + ctime(&m_time); 
@@ -317,13 +318,13 @@ public:
 		else if ( dir->theMap.find(seg) != dir->theMap.end() ) {    // Added check so only valids can be added to map
 		  ind = dynamic_cast<Inode<Directory>*>( (dir->theMap)[seg] );
 		  if ( ! ind ) {
-			cerr << prefix.str() << ": No such file or directory\n";
+			cerr << prefix.str() << ":1 No such file or directory\n";
 			break;
 		  }
 		}
 		else if ( cmd == "mkdir" || cmd == "touch") {
 		  cerr << cmd << ": cannot create directory `" << prefix.str() << "/" 
-		       << lastSeg << "': No such file or directory\n";
+		       << lastSeg << "':2 No such file or directory\n";
 		  error = true;
 		}  
       }
@@ -463,17 +464,39 @@ int touch( Args tok ) {
   return 0;
 }
 
+
+
+//~ int fileText(Args tok)
+//~ {
+	//~ cout << "tok [3] : " << tok[2] << endl;
+	//~ // tok[1] the file
+	//~ string fileText;
+	//~ Inode<File>* theFile  =  dynamic_cast<Inode<File>*>( wdi->file->theMap.find(tok[1])->second);
+	//~ for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
+	//~ theFile->file->text = fileText;
+	//~ 
+//~ }
+
 int write(Args tok)
 {
+	cout << "tok [3] : " << tok[2] << endl;
 	// tok[1] the file
-	// 
-	//Inode<File> * temp;
-//	SetUp su(tok);
-	//if(su.error) return -1;
-//	temp = su.ind->file->theMap.find(tok[1]);
+	SetUp su(tok);
+	if(su.error) return -1;
+	string fileText;
+	Inode<File>* theFile  =  dynamic_cast<Inode<File>*>( su.ind->file->theMap.find(tok[1])->second);
+	for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
+	theFile->file->text = fileText;
+	cout << "FILETEXT: " << fileText << endl;
 	
 }
 
+int read(Args tok)
+{
+	SetUp su(tok);
+	Inode<File>* f  =  dynamic_cast<Inode<File>*>( su.ind->file->theMap.find(tok[1])->second);
+	cout << "text is: " << f->file->text << endl;
+}
 
 int cd( Args tok ) {
   string home = "/";  // root is everybody's home for now.
@@ -633,8 +656,12 @@ void preserveRecursive ( Inode<Directory>* ind, string s, ofstream& store) {
 	else if(it->second->type() == "app") {
 		continue;
 	}
+	else if(it->second->type() == "file"){
+		Inode<File>* f  =  dynamic_cast<Inode<File>*>( it->second);
+		store << it->second->type() << ";" << s + "/" + it->first << ";" << it->second->c_time << ";" << it->second->m_time << ";" << it->second->a_time << ";" << f->file->text << endl ;
+	}
 	else {
-	  store << it->second->type() << ";" << s + "/" + it->first << ";" << it->second->c_time << ";" << it->second->m_time << ";" << it->second->a_time<< endl ;
+	  store << it->second->type() << ";" << s + "/" + it->first << ";" << it->second->c_time << ";" << it->second->m_time << ";" << it->second->a_time << endl ;
 	}
   }
   return;
@@ -673,9 +700,12 @@ map<string, App*> apps = {
   pair<const string, App*>("pwd", pwd),
   pair<const string, App*>("tree", tree),
   pair<const string, App*>("echo", echo),
-  pair<const string, App*>("write", write)
+  pair<const string, App*>("write", write),
+  pair<const string, App*>("read",read)
   
 };  // app maps mames to their implementations.
+
+
 
 
 void FSInit(string file){
@@ -719,6 +749,23 @@ void FSInit(string file){
 	  else if(filepaths[0] == "file") {
 	    filepaths[0] = "touch";
 	    touch( filepaths );
+	    //filepaths[0] = "write";
+	    
+	   // cout << "HELLO!" << substr( << endl;
+	    vector <string> args;
+	    vector<string> temp_args;
+	    temp_args = split(filepaths[1], "/" );
+	    
+	    args.push_back("write");
+	    string filename = temp_args[temp_args.size()-1];
+	    args.push_back(filename);
+	   // args.push_back(" ");
+	    //read(filename);
+	    args.push_back(filepaths[filepaths.size() -1] );
+	   //  cd(filepaths[1]);
+	    //Inode<File>* f  =  dynamic_cast<Inode<File>*>( wdi->file->theMap.find(tok[1])->second);
+	    //cout << "TEST" << f->file->text;
+	    //write(args);
 	  }
 	  else {
 	  }
