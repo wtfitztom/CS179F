@@ -201,6 +201,7 @@ class Inode<File> : public InodeBase {
 public:
   string type() { return "file"; }
   File* file;
+  string text;
   Inode<File> ( File* x ) : file(x) {}
   string show() {   // a simple diagnostic aid
     return " This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " at " + ctime(&m_time); 
@@ -462,6 +463,18 @@ int touch( Args tok ) {
   return 0;
 }
 
+int write(Args tok)
+{
+	// tok[1] the file
+	// 
+	//Inode<File> * temp;
+//	SetUp su(tok);
+	//if(su.error) return -1;
+//	temp = su.ind->file->theMap.find(tok[1]);
+	
+}
+
+
 int cd( Args tok ) {
   string home = "/";  // root is everybody's home for now.
   if ( tok.size() == 1 ) tok.push_back( home );
@@ -527,6 +540,7 @@ int mkdir( Args tok ) {
       sudir->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
       sudir->current = dynamic_cast<Inode<Directory>*>(d->theMap[su.lastSeg]);
 	 }
+	 //TreeDFS(root, "");
   return 0;
 }   
 
@@ -658,7 +672,9 @@ map<string, App*> apps = {
   pair<const string, App*>("touch", touch),
   pair<const string, App*>("pwd", pwd),
   pair<const string, App*>("tree", tree),
-  pair<const string, App*>("echo", echo)
+  pair<const string, App*>("echo", echo),
+  pair<const string, App*>("write", write)
+  
 };  // app maps mames to their implementations.
 
 
@@ -668,6 +684,11 @@ void FSInit(string file){
   root->file->mk("bin", appdir); //Update to put apps in a directory
   appdir->parent = root; //Update to put apps in a directory
   appdir->current = dynamic_cast<Inode<Directory>*>(root->file->theMap["bin"]); //Update to put apps in a directory
+  
+  Directory* devdir = new Directory(); //Update to put devs in a directory
+  root->file->mk("dev", devdir);//Update to put devss in a directory
+  devdir->parent = root; //Update to set dev devices parent as root
+  devdir -> current = dynamic_cast<Inode<Directory>*>(root->file->theMap["dev"]);
   
   for( auto it : apps ) {
     Inode<App>* temp(new Inode<App>(it.second));
