@@ -357,7 +357,8 @@ public:
         lastSeg = current;
       }
       else {
-        cerr << lastSeg << ": No such file or directory\n";
+        if(cmd != "write")
+          cerr << lastSeg << ": No such file or directory\n";
         error = true;
       }
     }
@@ -482,13 +483,27 @@ int write(Args tok)
 	cout << "tok [3] : " << tok[2] << endl;
 	// tok[1] the file
 	SetUp su(tok);
-	if(su.error) return -1;
 	string fileText;
-	Inode<File>* theFile  =  dynamic_cast<Inode<File>*>( su.ind->file->theMap.find(tok[1])->second);
-	for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
-	theFile->file->text = fileText;
-	cout << "FILETEXT: " << fileText << endl;
-	
+	if(su.error) { //create new file
+      Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su.ind);
+      Directory* d = dir_ptr->file;
+      File* sufile = new File();
+      sufile->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
+      sufile->touch( su.lastSeg, sufile );
+      for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
+      sufile->text = fileText;
+		
+	}
+	else if(su.b->type() != "file") {
+		cout << tok[1] << ": is not a regular file.  Cannot write." << endl;
+		return -1;
+	}
+	else {
+		Inode<File>* theFile  =  dynamic_cast<Inode<File>*>( su.ind->file->theMap.find(tok[1])->second);
+		for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
+		theFile->file->text = fileText;
+		cout << "FILETEXT: " << fileText << endl;
+	}	
 }
 
 int read(Args tok)
@@ -658,7 +673,7 @@ void preserveRecursive ( Inode<Directory>* ind, string s, ofstream& store) {
 	}
 	else if(it->second->type() == "file"){
 		Inode<File>* f  =  dynamic_cast<Inode<File>*>( it->second);
-		store << it->second->type() << ";" << s + "/" + it->first << ";" << it->second->c_time << ";" << it->second->m_time << ";" << it->second->a_time << ";" << f->file->text << endl ;
+		store << it->second->type() << ";" << s + "/" + it->first << ";" << it->second->c_time << ";" << it->second->m_time << ";" << it->second->a_time << ";" << f->file->text << endl;
 	}
 	else {
 	  store << it->second->type() << ";" << s + "/" + it->first << ";" << it->second->c_time << ";" << it->second->m_time << ";" << it->second->a_time << endl ;
@@ -747,8 +762,9 @@ void FSInit(string file){
 	    mkdir( filepaths );
 	  }
 	  else if(filepaths[0] == "file") {
-	    filepaths[0] = "touch";
-	    touch( filepaths );
+	    filepaths[0] = "write";
+	    filepaths.erase (filepaths.begin()+2,filepaths.begin()+5); //remove a,m,c times
+	    write( filepaths );
 	    //filepaths[0] = "write";
 	    
 	   // cout << "HELLO!" << substr( << endl;
