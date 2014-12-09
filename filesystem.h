@@ -26,6 +26,7 @@ using namespace std;
 namespace filesystem {
 //==================== here are some utilities =====================
 
+
 bool correct_pathname(const string& path) {
 size_t first_wrong = path.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz123456789./");
 return first_wrong == string::npos;
@@ -114,6 +115,11 @@ public:
     if ( ! openCount && ! linkCount ) {
       // throwstuff away
     }
+  }
+  virtual void updateTime(time_t create, time_t modified, time_t accessed) {
+	  c_time = create;
+	  m_time = modified;
+	  a_time = accessed;
   }
 };
 int InodeBase::count = 0;
@@ -480,11 +486,14 @@ int touch( Args tok ) {
 
 int write(Args tok)
 {
-	cout << "tok [3] : " << tok[2] << endl;
-	// tok[1] the file
-	SetUp su(tok);
-	string fileText;
-	if(su.error) { //create new file
+    if ( tok.size() < 2 ) {
+    cerr << "write: missing operand\n";
+    return -1;
+    }
+	 // tok[1] the file
+    SetUp su(tok);
+    string fileText;
+    if(su.error) { //create new file
       Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su.ind);
       Directory* d = dir_ptr->file;
       File* sufile = new File();
@@ -501,16 +510,23 @@ int write(Args tok)
 	else {
 		Inode<File>* theFile  =  dynamic_cast<Inode<File>*>( su.ind->file->theMap.find(tok[1])->second);
 		for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
-		theFile->file->text = fileText;
-		cout << "FILETEXT: " << fileText << endl;
+		theFile->file->text = theFile->file->text + fileText;
+		theFile->m_time = time(0);
+		theFile->a_time = theFile->m_time;
+		cout << "FILETEXT: " << theFile->file->text << endl;
 	}	
 }
 
 int read(Args tok)
 {
+   if ( tok.size() < 2 ) {
+   cerr << "read: missing operand\n";
+   return -1;
+   }
 	SetUp su(tok);
 	Inode<File>* f  =  dynamic_cast<Inode<File>*>( su.ind->file->theMap.find(tok[1])->second);
 	cout << "text is: " << f->file->text << endl;
+	f->a_time = time(0);
 }
 
 int cd( Args tok ) {
@@ -581,6 +597,56 @@ int mkdir( Args tok ) {
 	 //TreeDFS(root, "");
   return 0;
 }   
+
+int mkdir( Args tok, time_t c, time_t m, time_t a){
+	SetUp su( tok );
+    if ( su.error ) return -1;
+    // Need to fix this in the Setup, but shouldn't check for "" here.
+    if(su.lastSeg == "." || su.lastSeg == ".." || (su.lastSeg).find(".") != std::string::npos || su.lastSeg == "") { // Added checks for . & .. directories
+      cerr << "mkdir: invalid directory name\n";
+	  return -1;
+    }
+    Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su.ind);
+    // Added Directory Already Exist
+    if(dir_ptr->file->theMap.find(su.lastSeg) != dir_ptr->file->theMap.end()) { // Added checks for . & .. directories
+      cerr << "mkdir: File exists\n";
+      dir_ptr->file->theMap[su.lastSeg]->updateTime(c,m,a);
+    }
+	 else {
+      Directory* d = dir_ptr->file;
+      Directory* sudir = new Directory();
+      d->mk( su.lastSeg, sudir );
+      sudir->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
+      sudir->current = dynamic_cast<Inode<Directory>*>(d->theMap[su.lastSeg]);
+      sudir->current->updateTime(c,m,a);
+	 }
+}
+int write( Args tok, time_t c, time_t m, time_t a){
+	SetUp su(tok);
+    string fileText;
+    if(su.error) { //create new file
+      Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su.ind);
+      Directory* d = dir_ptr->file;
+      File* sufile = new File();
+      sufile->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
+      sufile->touch( su.lastSeg, sufile );
+      for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
+      sufile->text = fileText;
+      sufile->parent->file->theMap[su.lastSeg]->updateTime(c,m,a);
+		
+	}
+	else if(su.b->type() != "file") {
+		cout << tok[1] << ": is not a regular file.  Cannot write." << endl;
+		return -1;
+	}
+	else {
+		Inode<File>* theFile  =  dynamic_cast<Inode<File>*>( su.ind->file->theMap.find(tok[1])->second);
+		for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
+		theFile->file->text = theFile->file->text + fileText;
+		theFile->updateTime(c,m,a);
+		cout << "FILETEXT: " << theFile->file->text << endl;
+	}	
+}
 
 
 int rmdir( Args tok ) {
@@ -734,13 +800,6 @@ void FSInit(string file){
   root->file->mk("dev", devdir);//Update to put devss in a directory
   devdir->parent = root; //Update to set dev devices parent as root
   devdir -> current = dynamic_cast<Inode<Directory>*>(root->file->theMap["dev"]);
-  
-  for( auto it : apps ) {
-    Inode<App>* temp(new Inode<App>(it.second));
-    InodeBase* junk = static_cast<InodeBase*>(temp);
-    //    InodeBase* junk = temp;
-    dynamic_cast<Inode<Directory>*>(	wd()->theMap["bin"])->file->theMap[it.first] = new Inode<App>(it.second);
-  }
   Inode<Directory>* r = root;
   string line = "";
   ifstream myfile (file);
@@ -752,19 +811,23 @@ void FSInit(string file){
       stringstream ss(line);             // split temp at white spaces.
       vector<string> rfile;          // then get its cmd-line arguments.
       string s;
+	  time_t c, m, a;
       while( ss >> s ) rfile.push_back(s);
       vector<string> filepaths;
       for(auto it = rfile.begin(); it != rfile.end(); ++it) {
         filepaths = split(*it,";");
+        c = atol(filepaths[2].c_str());
+        m = atol(filepaths[3].c_str());
+        a = atol(filepaths[4].c_str());
+        filepaths.erase (filepaths.begin()+2,filepaths.begin()+5); //remove a,m,c times
 	  }
 	  if(filepaths[0] == "dir") {
 	    filepaths[0] = "mkdir";
-	    mkdir( filepaths );
+	    mkdir( filepaths, c, m, a );
 	  }
 	  else if(filepaths[0] == "file") {
 	    filepaths[0] = "write";
-	    filepaths.erase (filepaths.begin()+2,filepaths.begin()+5); //remove a,m,c times
-	    write( filepaths );
+	    write( filepaths, c, m, a );
 	  }
 	  else {
 	  }
@@ -772,6 +835,13 @@ void FSInit(string file){
     myfile.close();
   }
   else cout << "Unable to open file"; 
+  
+  for( auto it : apps ) {
+    Inode<App>* temp(new Inode<App>(it.second));
+    InodeBase* junk = static_cast<InodeBase*>(temp);
+    //    InodeBase* junk = temp;
+    dynamic_cast<Inode<Directory>*>(	wd()->theMap["bin"])->file->theMap[it.first] = new Inode<App>(it.second);
+  }
 }
 
 }
