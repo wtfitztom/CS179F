@@ -765,23 +765,6 @@ void FSInit(string file){
 	    filepaths[0] = "write";
 	    filepaths.erase (filepaths.begin()+2,filepaths.begin()+5); //remove a,m,c times
 	    write( filepaths );
-	    //filepaths[0] = "write";
-	    
-	   // cout << "HELLO!" << substr( << endl;
-	    vector <string> args;
-	    vector<string> temp_args;
-	    temp_args = split(filepaths[1], "/" );
-	    
-	    args.push_back("write");
-	    string filename = temp_args[temp_args.size()-1];
-	    args.push_back(filename);
-	   // args.push_back(" ");
-	    //read(filename);
-	    args.push_back(filepaths[filepaths.size() -1] );
-	   //  cd(filepaths[1]);
-	    //Inode<File>* f  =  dynamic_cast<Inode<File>*>( wdi->file->theMap.find(tok[1])->second);
-	    //cout << "TEST" << f->file->text;
-	    //write(args);
 	  }
 	  else {
 	  }
