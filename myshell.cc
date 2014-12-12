@@ -6,7 +6,7 @@
 #include <sys/wait.h>
 #include <errno.h>                       // man errno for information
 #include <cassert>
-//#include <thread> //test
+//#include <thread>
 #include <unistd.h>
 #include <cerrno>
 #include <cstring>
@@ -111,7 +111,8 @@ class shellThread : public Thread {
                 close( pipe_in );
                 break;                      // exec with the current arglist.
               }
-            } else {           // add this token a C-style argv for execvp().
+            } 
+            else {           // add this token a C-style argv for execvp().
               // Append tok[i].c_str() to arglist
               arglist[argct] = new char[1+tok[i].size()]; 
               strcpy( arglist[argct], tok[i].c_str() );
@@ -131,6 +132,7 @@ class shellThread : public Thread {
 //          execvp( progname.c_str(), arglist );         // execute the command.
 
 		  Inode<App>* junk = static_cast<Inode<App>*>((dynamic_cast<Inode<Directory>*>(root->file->theMap["bin"])->file->theMap)[tok[0]] ); //Update to put apps in a directory
+
 		    if ( ! junk ) {
 			  (dynamic_cast<Inode<Directory>*>(root->file->theMap["bin"])->file->theMap).erase(tok[0]);
 			  cerr << "shell: " << tok[0] << " command not found\n";
@@ -139,6 +141,7 @@ class shellThread : public Thread {
 			App* thisApp = static_cast<App*>(junk->file);
 			if ( thisApp != 0 ) {
 			  thisApp(tok);          // if possible, apply cmd to its args.
+			  return;
 			} else { 
 			  cerr << "Instruction " << tok[0] << " not implemented.\n";
 			}
@@ -203,13 +206,14 @@ int doit( vector<string> tok ) {
   assert( progname != "" );
 
   // A child process can't cd for its parent.
-  //~ if ( progname == "cd" ) {                    // chdir() and return.
-    //~ chdir( tok.size() > 1 ? tok[1].c_str() : getenv("HOME") );
-    //~ if ( ! errno ) return 0;
-    //~ cerr << "myshell: cd: " << strerror(errno) << endl;
-    //~ return -1;
-  //~ }
-
+  /*
+  if ( progname == "cd" ) {                    // chdir() and return.
+    chdir( tok.size() > 1 ? tok[1].c_str() : getenv("HOME") );
+    if ( ! errno ) return 0;
+    cerr << "myshell: cd: " << strerror(errno) << endl;
+    return -1;
+  }
+	*/
   // fork.  And, wait if child to run in foreground.
   /*if ( pid_t kidpid = fork() )
   {      
@@ -221,7 +225,7 @@ int doit( vector<string> tok ) {
   // You're the child.
   //cerr << "Thread starting\n";
   shellThread thread1 ("Temp name", INT_MAX,tok);
- // cerr << "thread exiting\n";
+  //cerr << "thread exiting\n";
   thread1.join();
   //cerr << "returning\n";
   return 0;
@@ -234,7 +238,7 @@ int main( int argc, char* argv[] ) {
 ///*
   FSInit("info.txt");
   while ( ! cin.eof() ) {
-    cout << "["<< current <<"]? ";                                        // prompt.
+    cout << "? " ;                                         // prompt.
     //testCompleteMe();
     // testCompleteMe();
     string temp = "";
@@ -257,7 +261,7 @@ int main( int argc, char* argv[] ) {
     }
 
   }
-  cerr << "exit" << endl;
+  //cerr << "exit" << endl;
   return 0;                                                  // exit.
   //*/
 //    testCompleteMe();
