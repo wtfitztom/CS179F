@@ -328,7 +328,7 @@ public:
 			break;
 		  }
 		}
-		else if ( cmd == "mkdir" || cmd == "touch") {
+		else if ( cmd == "mkdir" || cmd == "touch" || cmd == "mv" || cmd == "cp") {
 		  cerr << cmd << ": cannot create directory `" << prefix.str() << "/" 
 		       << lastSeg << "':2 No such file or directory\n";
 		  error = true;
@@ -341,7 +341,7 @@ public:
       return;
     }
     b = ( lastSeg == "" ? ind : (ind->file->theMap.find(lastSeg) != ind->file->theMap.end() ? ind->file->theMap[lastSeg] : 0)); // Added if-statement so only valids can be added to map
-    if ( !b  && cmd != "mkdir" && cmd !="touch") {
+    if ( !b  && cmd != "mkdir" && cmd !="touch" && cmd !="mv" && cmd != "cp") {
       if(lastSeg == "." && ind == root) { // Added checks for . & .. directories
         lastSeg = "/";
         b = root;
@@ -471,7 +471,160 @@ int touch( Args tok ) {
   return 0;
 }
 
+int mv( Args tok ) {
+	if ( tok.size() < 1 ) {
+		cerr << "mv: missing file operand\n";
+		return -1;
+	}
+	else if ( tok.size() < 2 ) {
+		cerr << "mv: missing destination file operand.\n";
+		return -1;
+	}
+	SetUp su( tok );
+	if ( su.error ) {
+		cerr << "mv: cannot stat '" << su.lastSeg << "': No such file or directory";
+		return -1;
+	}
+	else if(!su.b) {
+		  cerr << "mv: source file does not exist.\n";
+		  return -1;
+	}
+	else if(su.b->type() == "file" || su.b->type() == "dir") {
+		tok.erase(tok.begin()+1);
+		SetUp su2( tok );
+		if ( su2.error ) {
+			cerr << "mv: missing destination file operand.\n";
+			return -1;
+		}
+		// Need to fix this in the Setup, but shouldn't check for "" here.
+		else if(su2.lastSeg == "") {
+			cerr << "mv: missing destination file operand.\n";
+			return -1;
+		}
+		if(su.ind->file->theMap[su.lastSeg] == root->file->theMap["bin"]) {
+			cerr << "mv: Cannot move bin.\n";
+			return -1;
+		}
+		else if(!su2.b) { // if destination doesn't exist
+			Inode<Directory>* dir_ptr_s = dynamic_cast<Inode<Directory>*>(su.ind);
+			Inode<Directory>* dir_ptr_d = dynamic_cast<Inode<Directory>*>(su2.ind);
+			Directory* d_s = dir_ptr_s->file;
+			Directory* d_d = dir_ptr_d->file;
+			d_d->theMap[su2.lastSeg] = su.b;
+			d_s->theMap.erase(su.lastSeg);
+			if(su.b->type() == "dir")
+				dynamic_cast<Inode<Directory>*>(su.b)->file->parent = dynamic_cast<Inode<Directory>*>(dir_ptr_d);
+			else if (su.b->type() == "file")
+				dynamic_cast<Inode<File>*>(su.b)->file->parent = dynamic_cast<Inode<Directory>*>(dir_ptr_d);
+		}
+		else if (su.b->type() == "file") { // if destination does exist
+			if(su2.b->type() == "dir") {
+				Inode<Directory>* dir_ptr_s = dynamic_cast<Inode<Directory>*>(su.ind);
+				Inode<Directory>* dir_ptr_d = dynamic_cast<Inode<Directory>*>(su2.b);
+				Directory* d_s = dir_ptr_s->file;
+				Directory* d_d = dir_ptr_d->file;
+				d_d->theMap[su.lastSeg] = su.b;
+				d_s->theMap.erase(su.lastSeg);
+			}
+			else if(su2.b->type() == "file") {
+				Inode<Directory>* dir_ptr_s = dynamic_cast<Inode<Directory>*>(su.ind);
+				Inode<Directory>* dir_ptr_d = dynamic_cast<Inode<Directory>*>(su2.ind);
+				Directory* d_s = dir_ptr_s->file;
+				Directory* d_d = dir_ptr_d->file;
+				d_d->theMap.erase(su2.lastSeg);
+				d_d->theMap[su2.lastSeg] = su.b;
+				d_s->theMap.erase(su.lastSeg);
+			}
+			else {
+				cerr << "mv: destination is not a file or directory.\n";
+				return -1;
+			}
+		}
+		else  if (su.b->type() == "dir") {
+			if(su2.b->type() == "file") {
+				cerr << "mv: Cannot move directory '" << su.lastSeg << "' into file '" << su2.lastSeg << "'.\n";
+				return -1;
+			}
+			else if(su2.b->type() == "dir") {
+				Inode<Directory>* dir_ptr_d = dynamic_cast<Inode<Directory>*>(su2.ind);
+				Directory* d_d = dir_ptr_d->file;
+				if(d_d->theMap.empty()) {
+					cerr << "mv: Cannot move directory '" << su.lastSeg << "' a non-empty directory '" << su2.lastSeg << "'.\n";
+					return -1;
+				}
+				else {
+					Inode<Directory>* dir_ptr_s = dynamic_cast<Inode<Directory>*>(su.ind);
+					Directory* d_s = dir_ptr_s->file;
+					d_d->theMap[su2.lastSeg] = su.b;
+					d_s->theMap.erase(su.lastSeg);
+				}
+			}
+			else {
+				cerr << "mv: destination is not a file or directory.\n";
+				return -1;
+			}
+			
+		}
+		else {
+			cerr << "mv: not a file/directory";
+			return -1;
+		}
+	}
+	else {
+		cerr << "mv: not a file/directory";
+		return -1;
+	}
+	return 0;
+}
 
+int cp ( Args tok ) {
+	if ( tok.size() < 2 ) {
+		cerr << "cp: missing file operand.\n";
+		return -1;
+	}
+	SetUp su( tok );
+	if ( su.error ) {
+		cerr << su.lastSeg << "': No such file or directory";
+		return -1;
+	}
+	else if(!su.b) {
+		  cerr << "cp: No such file or directory.\n";
+		  return -1;
+	}
+	else if(su.b->type() == "file") {
+		tok.erase(tok.begin()+1);
+		SetUp su2( tok );
+		if ( su2.error ) {
+			cerr << "cp: destination directory does not exist.\n";
+			return -1;
+		}
+		// Need to fix this in the Setup, but shouldn't check for "" here.
+		else if(su2.lastSeg == "") {
+			cerr << "cp: missing destination file operand.\n";
+			return -1;
+		}
+		if(!su2.b) { // if destination doesn't exist
+			Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su2.ind);
+			File* sufile = new File();
+			sufile->text = dynamic_cast<Inode<File>*>(su.b)->file->text;	
+			sufile->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
+			sufile->touch( su2.lastSeg, sufile );
+		}
+		else if(su2.b->type() == "file") {
+			dynamic_cast<Inode<File>*>(su2.b)->file->text = dynamic_cast<Inode<File>*>(su.b)->file->text;	
+			touch( tok );
+		}
+		else {
+			cerr << su2.lastSeg << ": destination exist and is not a file.";
+			return -1;
+		}
+	}
+	else {
+		cerr << "cp: not a file/directory";
+		return -1;
+	}
+	return 0;
+}
 
 //~ int fileText(Args tok)
 //~ {
@@ -483,6 +636,39 @@ int touch( Args tok ) {
 	//~ theFile->file->text = fileText;
 	//~ 
 //~ }
+
+int wc(Args tok){
+	if ( tok.size() < 2 ) {
+		cerr << "wc: missing file operand.\n";
+		return -1;
+	}
+	SetUp su( tok );
+	if ( su.error ) {
+		cerr << "wc: file does not exist.\n";
+		return -1;
+	}
+	if (su.b->type() == "file") {
+		Inode<File>* f  =  dynamic_cast<Inode<File>*>( su.ind->file->theMap.find(tok[1])->second);
+		string s = f->file->text;
+
+		int wCount=0; 
+		int nLineCount = 0;
+		int charCount = 0;        
+		for (unsigned int i=0; i < s.length(); i++){   
+			if ((s.at(i) == ' ')&&(s.at(i)+1 !='\0'))
+				wCount++;
+			if(s.at(i) == '\n') 
+				nLineCount++;
+			if ((s.at(i) != ' ' && s.at(i) != '\n' && s.at(i) != '\t'))
+				charCount++;
+		}
+		cout << wCount << " " << nLineCount << " " << charCount << endl;
+	}
+	else {
+		cerr << su.lastSeg << ": is not a file.\n";
+		return -1;
+	}
+}
 
 int write(Args tok)
 {
@@ -515,6 +701,32 @@ int write(Args tok)
 		theFile->a_time = theFile->m_time;
 		cout << "FILETEXT: " << theFile->file->text << endl;
 	}	
+}
+
+int cat(Args tok)
+{
+	if ( tok.size() < 2 ) {
+    cerr << "cat: missing operand\n";
+    return -1;
+    }
+	 // tok[1] the file
+    SetUp su(tok);
+    string fileText;
+    if(su.error) { //create new file
+		return -1;
+	}
+	else{
+		if(su.b->type() != "file") {
+			cerr << su.lastSeg << ": not a file to cat.\n";
+			return -1;
+		}
+		for(int i = 1; i < tok.size(); i++){
+			Inode<File>* f  =  dynamic_cast<Inode<File>*>( su.ind->file->theMap.find(tok[i])->second);
+			cout << f->file->text << endl;
+		}
+	}
+	
+	
 }
 
 int read(Args tok)
@@ -678,11 +890,20 @@ int rmdir( Args tok ) {
 
 
 int rm( Args tok ) {
+  if ( tok.size() < 2 ) {
+    cerr << "rm: missing operand\n";
+    return -1;
+  }
   SetUp su( tok );
+  cout << "hey" << endl;
+  if(su.error) { 
+    cout << "rm: file does not exist\n";
+    return -1;
+  }
   if ( su.ind->file->theMap[su.lastSeg]->type() == "dir" ) {  
     cout << "rm: cannot remove `"<< su.lastSeg << "': is a  directory\n";
-    return 0;
-  } 
+    return -1;
+  }
   cout << "rm: remove regular file `" << su.lastSeg << "'? ";
   string response;
   getline( cin, response );            // read user's response.
@@ -781,8 +1002,12 @@ map<string, App*> apps = {
   pair<const string, App*>("pwd", pwd),
   pair<const string, App*>("tree", tree),
   pair<const string, App*>("echo", echo),
+  pair<const string, App*>("cat", cat),
+  pair<const string, App*>("wc", wc),
   pair<const string, App*>("write", write),
-  pair<const string, App*>("read",read)
+  pair<const string, App*>("read", read),
+  pair<const string, App*>("mv", mv),
+  pair<const string, App*>("cp", cp)
   
 };  // app maps mames to their implementations.
 
