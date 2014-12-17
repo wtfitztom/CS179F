@@ -95,7 +95,9 @@ class InodeBase {
 public: 
   virtual string type() = 0;
   virtual string show() = 0;
-  virtual void ls() = 0; 
+  virtual int getbytes() = 0;
+  virtual void ls() = 0;
+  
   static int count;
   time_t a_time = time(0);
   time_t c_time = time(0);
@@ -134,6 +136,7 @@ public:
   App* file;
   Inode ( App* x ) : file(x) {}
   string type() { return "app"; }
+  int getbytes() { return 0; }
   string show() {   // a simple diagnostic aid
     return "This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " at " + ctime(&m_time); 
   } 
@@ -169,28 +172,13 @@ public:
 
   template<typename T>                               
   int mk( string s, T* x ) {
-	cout << s << ": " << endl;
     Inode<T>* ind = new Inode<T>(x);
     theMap[s] = ind;
   }
  
 };
 
-
-template<>
-class Inode<Directory> : public InodeBase {
-public:
-  string type() { return "dir"; }
-  Directory* file;
-  Inode<Directory> ( Directory* x ) : file(x) {}
-  string show() {   // a simple diagnostic aid
-    return " This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " at " + ctime(&m_time); 
-  } 
-  void ls() { file->ls(); }
-};
-
-
-class File {
+class File{
 public:
   Inode<Directory>* parent = NULL;
   string bytes;
@@ -198,25 +186,52 @@ public:
   File() {};
 
   template<typename T>                               
-  int touch( string s, T* x ) {
-    Inode<T>* ind = new Inode<T>(x);
-    parent->file->theMap[s] = ind;
-  }
+  int touch( string s, T* x );
 };
-
-
 template<>
 class Inode<File> : public InodeBase {
 public:
   string type() { return "file"; }
+  int getbytes() { return file->text.size(); }
   File* file;
   
   Inode<File> ( File* x ) : file(x) {}
   string show() {   // a simple diagnostic aid
-    return " This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " at " + ctime(&m_time); 
+    return " This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " with file size: " + to_string(this->getbytes()) + " at " + ctime(&m_time); 
   } 
   void ls() {}
 };
+
+template<>
+class Inode<Directory> : public InodeBase {
+public:
+  string type() { return "dir"; }
+  int getbytes() {
+    int size = 0;
+    for (auto it = file->theMap.begin(); it != file->theMap.end(); ++it ){
+      if(it->second->type() == "dir") {
+        size += dynamic_cast<Inode<Directory>*>(it->second)->getbytes();
+      }
+      else if(it->second->type() == "file") {
+        size += dynamic_cast<Inode<File>*>(it->second)->getbytes();
+      }
+    }
+    return size;
+  }
+  Directory* file;
+  Inode<Directory> ( Directory* x ) : file(x) {}
+  string show() {   // a simple diagnostic aid
+    return " This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " with file size: " + to_string(this->getbytes()) + " at " + ctime(&m_time); 
+  } 
+  void ls() { file->ls(); }
+};
+
+template<typename T>                               
+  int File::touch( string s, T* x ) {
+
+    Inode<T>* ind = new Inode<T>(x);
+    parent->file->theMap[s] = ind;
+  }
 
 
 
@@ -384,32 +399,32 @@ void TreeDFS ( Inode<Directory>* ind, string s) {
   int count = 0;
   string old_s = s;
   for(auto it = ind->file->theMap.begin(); it != ind->file->theMap.end(); ++it) {
-	++count;
-	if(it->second->type() == "dir") {
-      if(!dynamic_cast<Inode<Directory>*>(it->second)->file->theMap.empty()) {
-	    if(ind->file->theMap.size() != count) {
-		  cout << old_s << "├── " << it->first << " " << it->second->show();
-		  s = old_s + "│   ";
-		}
-	    else {
-		  cout <<  old_s << "└── " << it->first << " " << it->second->show();
-		  s = old_s + "    ";
-		}
-	  }
-	  else {
-	    if(ind->file->theMap.size() != count) cout <<  old_s << "├── " << it->first << " " << it->second->show();
-	    else cout <<  old_s << "└── " << it->first << " " << it->second->show();
-	  }
-	  TreeDFS(dynamic_cast<Inode<Directory>*>(it->second), s);
-	}
-	else if(ind->file->theMap.size() != count) {
-	  if(it->second->type() == "file") cout <<  old_s << "├── " << "\033[0;32m" << it->first << " " << it->second->show() << "\033[0;30m";
-	  else cout <<  old_s << "├── " << it->first << " " << it->second->show();
-	}
-	else {
-	  if(it->second->type() == "file") cout <<  old_s << "└── " << "\033[0;32m" << it->first << " " << it->second->show() << "\033[0;30m";
-	  else cout <<  old_s << "└── " << it->first << " " << it->second->show();
-	}
+    ++count;
+    if(it->second->type() == "dir") {
+        if(!dynamic_cast<Inode<Directory>*>(it->second)->file->theMap.empty()) {
+          if(ind->file->theMap.size() != count) {
+            cout << old_s << "├── " << it->first << " " << it->second->show();
+            s = old_s + "│   ";
+          }
+          else {
+            cout <<  old_s << "└── " << it->first << " " << it->second->show();
+            s = old_s + "    ";
+          }
+      }
+      else {
+      if(ind->file->theMap.size() != count) cout <<  old_s << "├── " << it->first << " " << it->second->show();
+      else cout <<  old_s << "└── " << it->first << " " << it->second->show();
+      }
+      TreeDFS(dynamic_cast<Inode<Directory>*>(it->second), s);
+    }
+    else if(ind->file->theMap.size() != count) {
+      if(it->second->type() == "file") cout <<  old_s << "├── " << "\033[0;32m" << it->first << " " << it->second->show() << "\033[0;30m";
+      else cout <<  old_s << "├── " << it->first << " " << it->second->show();
+    }
+    else {
+      if(it->second->type() == "file") cout <<  old_s << "└── " << "\033[0;32m" << it->first << " " << it->second->show() << "\033[0;30m";
+      else cout <<  old_s << "└── " << it->first << " " << it->second->show();
+    }
   }
   return;
 }
@@ -619,13 +634,79 @@ int cp ( Args tok ) {
 			dynamic_cast<Inode<File>*>(su2.b)->file->text = dynamic_cast<Inode<File>*>(su.b)->file->text;	
 			touch( tok );
 		}
+    else if(su2.b->type() == "dir") {
+			Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su2.b);
+			File* sufile = new File();
+			sufile->text = dynamic_cast<Inode<File>*>(su.b)->file->text;	
+			sufile->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
+			sufile->touch( su.lastSeg, sufile );
+    }
+		else {
+			cerr << su2.lastSeg << ": destination exist and is not a file.";
+			return -1;
+		}
+	}
+	else if(su.b->type() == "dir") {
+		tok.erase(tok.begin()+1);
+		SetUp su2( tok );
+		if ( su2.error ) {
+			cerr << "cp: destination directory does not exist.\n";
+			return -1;
+		}
+		// Need to fix this in the Setup, but shouldn't check for "" here.
+		else if(su2.lastSeg == "") {
+			cerr << "cp: missing destination file operand.\n";
+			return -1;
+		}
+		if(!su2.b) { // if destination doesn't exist
+      Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su2.ind);
+      Directory* d = dir_ptr->file;
+      Directory* sudir = new Directory();
+      d->mk( su2.lastSeg, sudir );
+      sudir->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
+      sudir->current = dynamic_cast<Inode<Directory>*>(d->theMap[su2.lastSeg]);
+      for(auto it = dynamic_cast<Inode<Directory>*>(su.b)->file->theMap.begin(); it != dynamic_cast<Inode<Directory>*>(su.b)->file->theMap.end();  ++it) {
+        vector<string> newdir;
+        newdir.push_back("cp");
+        newdir.push_back(su.input + "/" + it->first);
+        if(it->second->type() == "file") newdir.push_back(su2.input + "/" + it->first);
+        else if(it->second->type() == "dir") newdir.push_back(su2.input + "/" + it->first);
+        cp ( newdir );
+      }
+		}
+		else if(su2.b->type() == "file") {
+      cerr << "cp: cannot overwrite file w/ a dir.\n";
+      return -1;
+		}
+    else if(su2.b->type() == "dir") {
+      if(dynamic_cast<Inode<Directory>*>(su2.b)->file->theMap.size() == 0) {
+        Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su2.b);
+        Directory* d = dir_ptr->file;
+        Directory* sudir = new Directory();
+        d->mk( su.lastSeg, sudir );
+        sudir->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
+        sudir->current = dynamic_cast<Inode<Directory>*>(d->theMap[su.lastSeg]);
+        for(auto it = dynamic_cast<Inode<Directory>*>(su.b)->file->theMap.begin(); it != dynamic_cast<Inode<Directory>*>(su.b)->file->theMap.end();  ++it) {
+          vector<string> newdir;
+          newdir.push_back("cp");
+          newdir.push_back(su.input + "/" + it->first);
+          if(it->second->type() == "file") newdir.push_back(su2.input + "/" + su.lastSeg);
+          else if(it->second->type() == "dir") newdir.push_back(su2.input + "/" + su.lastSeg + "/" + su2.lastSeg);
+          cp ( newdir );
+        }
+      }
+      else {
+          cerr << "cp: directory not empty.\n";
+          return -1;
+      }
+    }
 		else {
 			cerr << su2.lastSeg << ": destination exist and is not a file.";
 			return -1;
 		}
 	}
 	else {
-		cerr << "cp: " << su.lastSeg << "cannot be copied because it is not a file.\n";
+		cerr << "cp: " << su.lastSeg << " cannot be copied because it is not a file/directory.\n";
 		return -1;
 	}
 	return 0;
@@ -677,22 +758,21 @@ int wc(Args tok){
 
 int write(Args tok)
 {
-    if ( tok.size() < 2 ) {
+  if ( tok.size() < 2 ) {
     cerr << "write: missing operand\n";
     return -1;
-    }
-	 // tok[1] the file
-    SetUp su(tok);
-    string fileText;
-    if(su.error) { //create new file
-      Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su.ind);
-      Directory* d = dir_ptr->file;
-      File* sufile = new File();
-      sufile->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
-      sufile->touch( su.lastSeg, sufile );
-      for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
-      sufile->text = fileText;
-		
+  }
+   // tok[1] the file
+  SetUp su(tok);
+  string fileText;
+  if(su.error) { //create new file
+    Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su.ind);
+    Directory* d = dir_ptr->file;
+    File* sufile = new File();
+    sufile->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
+    sufile->touch( su.lastSeg, sufile );
+    for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
+    sufile->text = fileText;
 	}
 	else if(su.b->type() == "file") {
 		Inode<File>* theFile = dynamic_cast<Inode<File>*>(su.b);
@@ -755,6 +835,7 @@ int cd( Args tok ) {
   string home = "/";  // root is everybody's home for now.
   if ( tok.size() == 1 ) tok.push_back( home );
   SetUp su( tok );
+  su.show();
   if ( su.error ) return -1;
   if ( su.b->type() != "dir" ) {
     cerr << "shell: cd:" << su.lastSeg << ": Not a directory\n";
@@ -779,7 +860,7 @@ int ls( Args tok ) {
   }
   if ( su.b->type() != "dir" ) {
     //assert(false);
-    cout << "cmd: " << su.lastSeg << ": not a directory\n";
+    cout << su.lastSeg << endl;
     return -1;
   }
   // assert(false);
@@ -799,52 +880,58 @@ int mkdir( Args tok ) {
     // cerr << "try `mkdir -- help' for more information";
     return -1;
   }
-    SetUp su( tok );
+  Args temp = tok;
+  for(auto it = tok.begin()+1; it != tok.end(); ++it) {
+    SetUp su( temp );
     if ( su.error ) return -1;
     // Need to fix this in the Setup, but shouldn't check for "" here.
     if(su.lastSeg == "." || su.lastSeg == ".." || (su.lastSeg).find(".") != std::string::npos || su.lastSeg == "") { // Added checks for . & .. directories
       cerr << "mkdir: invalid directory name\n";
-	  return -1;
+    return -1;
     }
     Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su.ind);
     // Added Directory Already Exist
     if(dir_ptr->file->theMap.find(su.lastSeg) != dir_ptr->file->theMap.end()) { // Added checks for . & .. directories
       cerr << "mkdir: File exists\n";
     }
-	 else {
+    else {
       Directory* d = dir_ptr->file;
       Directory* sudir = new Directory();
       d->mk( su.lastSeg, sudir );
       sudir->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
       sudir->current = dynamic_cast<Inode<Directory>*>(d->theMap[su.lastSeg]);
-	 }
-	 //TreeDFS(root, "");
+    }
+    temp.erase(temp.begin()+1);
+  }
   return 0;
 }   
 
 int mkdir( Args tok, time_t c, time_t m, time_t a){
-	SetUp su( tok );
-    if ( su.error ) return -1;
-    // Need to fix this in the Setup, but shouldn't check for "" here.
-    if(su.lastSeg == "." || su.lastSeg == ".." || (su.lastSeg).find(".") != std::string::npos || su.lastSeg == "") { // Added checks for . & .. directories
-      cerr << "mkdir: invalid directory name\n";
-	  return -1;
-    }
-    Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su.ind);
-    // Added Directory Already Exist
-    if(dir_ptr->file->theMap.find(su.lastSeg) != dir_ptr->file->theMap.end()) { // Added checks for . & .. directories
-      cerr << "mkdir: File exists\n";
-      dir_ptr->file->theMap[su.lastSeg]->updateTime(c,m,a);
-    }
-	 else {
-      Directory* d = dir_ptr->file;
-      Directory* sudir = new Directory();
-      d->mk( su.lastSeg, sudir );
-      sudir->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
-      sudir->current = dynamic_cast<Inode<Directory>*>(d->theMap[su.lastSeg]);
-      sudir->current->updateTime(c,m,a);
-	 }
+  
+  SetUp su( tok );
+  if ( su.error ) return -1;
+  // Need to fix this in the Setup, but shouldn't check for "" here.
+  if(su.lastSeg == "." || su.lastSeg == ".." || (su.lastSeg).find(".") != std::string::npos || su.lastSeg == "") { // Added checks for . & .. directories
+    cerr << "mkdir: invalid directory name\n";
+  return -1;
+  }
+  Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su.ind);
+  // Added Directory Already Exist
+  if(dir_ptr->file->theMap.find(su.lastSeg) != dir_ptr->file->theMap.end()) { // Added checks for . & .. directories
+    cerr << "mkdir: File exists\n";
+    dir_ptr->file->theMap[su.lastSeg]->updateTime(c,m,a);
+  }
+  else {
+    Directory* d = dir_ptr->file;
+    Directory* sudir = new Directory();
+    d->mk( su.lastSeg, sudir );
+    sudir->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
+    sudir->current = dynamic_cast<Inode<Directory>*>(d->theMap[su.lastSeg]);
+    sudir->current->updateTime(c,m,a);
+  }
+  return 0;
 }
+
 int write( Args tok, time_t c, time_t m, time_t a){
 	SetUp su(tok);
     string fileText;
@@ -869,7 +956,8 @@ int write( Args tok, time_t c, time_t m, time_t a){
 		theFile->file->text = theFile->file->text + fileText;
 		theFile->updateTime(c,m,a);
 		cout << "FILETEXT: " << theFile->file->text << endl;
-	}	
+	}
+  return 0;
 }
 
 
@@ -879,25 +967,32 @@ int rmdir( Args tok ) {
     // cerr << "try `mkdir -- help' for more information";
     return -1;
   }
-  SetUp su( tok );
-  if ( su.error ) return -1;
-  if(su.b->type() != "dir") { // Added checks for directories
-      cerr << "rmdir: invalid directory name\n";
-	  return -1;
+  Args temp = tok;
+  for(auto it = tok.begin()+1; it != tok.end(); ++it) 
+  {
+    SetUp su( temp );
+    if ( su.error ) return -1;
+    
+    if(su.b->type() != "dir") { // Added checks for directories
+        cerr << "rmdir: invalid directory name\n";
+      return -1;
+      }
+    Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su.ind);
+    if ( ! dir_ptr ) { 
+      cerr << "rmdir: failed to remove '" << tok[0] 
+           << "'; no such file or directory.\n";
+    } else if ( dynamic_cast<Inode<Directory>*>(su.b)->file->theMap.size() != 0 ) { 
+      cerr << "rmdir: failed to remove '" << tok[0] 
+           << "'; directory is not empty.\n";
+    } else if (dir_ptr->file->theMap.find(su.lastSeg) == dir_ptr->file->theMap.end() || dynamic_cast<Inode<Directory>*>(dir_ptr->file->theMap[su.lastSeg])->type() != "dir") {  // oops: if not there. added directory check
+      cerr << "rmdir: failed to remove '" << su.lastSeg
+           << "'; no such file or directory.\n";
+    } else {
+      dir_ptr->file->rm(su.lastSeg);
     }
-  Inode<Directory>* dir_ptr = dynamic_cast<Inode<Directory>*>(su.ind);
-  if ( ! dir_ptr ) { 
-    cerr << "rmdir: failed to remove '" << tok[0] 
-         << "'; no such file or directory.\n";
-  } else if ( dynamic_cast<Inode<Directory>*>(su.b)->file->theMap.size() != 0 ) { 
-    cerr << "rmdir: failed to remove '" << tok[0] 
-         << "'; directory is not empty.\n";
-  } else if (dir_ptr->file->theMap.find(su.lastSeg) == dir_ptr->file->theMap.end() || dynamic_cast<Inode<Directory>*>(dir_ptr->file->theMap[su.lastSeg])->type() != "dir") {  // oops: if not there. added directory check
-    cerr << "rmdir: failed to remove '" << su.lastSeg
-         << "'; no such file or directory.\n";
-  } else {
-    dir_ptr->file->rm(su.lastSeg);
+    temp.erase(temp.begin()+1);
   }
+  return 0;
 }
 
 
@@ -906,21 +1001,25 @@ int rm( Args tok ) {
     cerr << "rm: missing operand\n";
     return -1;
   }
-  SetUp su( tok );
-  cout << "hey" << endl;
-  if(su.error) { 
-    cout << "rm: file does not exist\n";
-    return -1;
+  Args temp = tok;
+  for(auto it = tok.begin()+1; it != tok.end(); ++it) 
+  {
+    SetUp su( temp );
+    if(su.error) { 
+      cout << "rm: file does not exist\n";
+      return -1;
+    }
+    if ( su.ind->file->theMap[su.lastSeg]->type() == "dir" ) {  
+      cout << "rm: cannot remove `"<< su.lastSeg << "': is a  directory\n";
+      return -1;
+    }
+    cout << "rm: remove regular file `" << su.lastSeg << "'? ";
+    string response;
+    getline( cin, response );            // read user's response.
+    if ( response[0] != 'y' && response[0] != 'Y' )  return 0;
+    su.ind->file->rm(su.lastSeg);
+    temp.erase(temp.begin()+1);
   }
-  if ( su.ind->file->theMap[su.lastSeg]->type() == "dir" ) {  
-    cout << "rm: cannot remove `"<< su.lastSeg << "': is a  directory\n";
-    return -1;
-  }
-  cout << "rm: remove regular file `" << su.lastSeg << "'? ";
-  string response;
-  getline( cin, response );            // read user's response.
-  if ( response[0] != 'y' && response[0] != 'Y' )  return 0;
-  su.ind->file->rm(su.lastSeg);
   return 0;
 }
 
@@ -948,8 +1047,32 @@ string pwdStr( Inode<Directory>* indb ) {
   }
   return pwdStr;
 }
+/*
+int ioRedirect(string filename, char ioType) {
+  vector<string> tok;
+  tok.push_back("ioRedirect");
+  tok.push_back(filename);
+  SetUp su(tok);
+  if ( su.error ) {
+    cout << "Unable to do redirection.\n";
+    return -1;
+  }
+  else if (su.b->type() != "file") {
+    cout << "Unable to do redirection. " << su.lastSeg << " is not a file.\n";
+    return -1;
+  }
+  if(ioType == 'w') {
+    stringstream buffer;
+    streambuf *old = cout.rdbuf(buffer.rdbuf());
+    cout << "hello";
+    dynamic_cast<Inode<File>*>(su.b)->file->text = buffer.str();
+    cout.rdbuf(old);
+  }
+}
 
-
+int ioRedirect ( Args tok ) {
+  ioRedirect("2", 'w');
+}*/
 
 void preserveRecursive ( Inode<Directory>* ind, string s, ofstream& store) {
   int count = 0;
@@ -1019,7 +1142,8 @@ map<string, App*> apps = {
   pair<const string, App*>("write", write),
   pair<const string, App*>("read", read),
   pair<const string, App*>("mv", mv),
-  pair<const string, App*>("cp", cp)
+  pair<const string, App*>("cp", cp),
+//  pair<const string, App*>("ioRedirect", ioRedirect)
   
 };  // app maps mames to their implementations.
 
@@ -1048,7 +1172,7 @@ void FSInit(string file){
       stringstream ss(line);             // split temp at white spaces.
       vector<string> rfile;          // then get its cmd-line arguments.
       string s;
-	  time_t c, m, a;
+	    time_t c, m, a;
       while( ss >> s ) rfile.push_back(s);
       vector<string> filepaths;
       for(auto it = rfile.begin(); it != rfile.end(); ++it) {
@@ -1057,17 +1181,17 @@ void FSInit(string file){
         m = atol(filepaths[3].c_str());
         a = atol(filepaths[4].c_str());
         filepaths.erase (filepaths.begin()+2,filepaths.begin()+5); //remove a,m,c times
-	  }
-	  if(filepaths[0] == "dir") {
-	    filepaths[0] = "mkdir";
-	    mkdir( filepaths, c, m, a );
-	  }
-	  else if(filepaths[0] == "file") {
-	    filepaths[0] = "write";
-	    write( filepaths, c, m, a );
-	  }
-	  else {
-	  }
+	    }
+      if(filepaths[0] == "dir") {
+        filepaths[0] = "mkdir";
+        mkdir( filepaths, c, m, a );
+      }
+      else if(filepaths[0] == "file") {
+        filepaths[0] = "write";
+        write( filepaths, c, m, a );
+      }
+      else {
+      }
     }
     myfile.close();
   }
