@@ -667,6 +667,7 @@ int cp ( Args tok ) {
 			sufile->text = dynamic_cast<Inode<File>*>(su.b)->file->text;	
 			sufile->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
 			sufile->touch( su2.lastSeg, sufile );
+      ++dir_ptr->linkCount;
 		}
 		else if(su2.b->type() == "file") {
 			dynamic_cast<Inode<File>*>(su2.b)->file->text = dynamic_cast<Inode<File>*>(su.b)->file->text;	
@@ -678,6 +679,7 @@ int cp ( Args tok ) {
 			sufile->text = dynamic_cast<Inode<File>*>(su.b)->file->text;	
 			sufile->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
 			sufile->touch( su.lastSeg, sufile );
+      ++dir_ptr->linkCount;
     }
 		else {
 			cerr << su2.lastSeg << ": destination exist and is not a file.";
@@ -703,6 +705,7 @@ int cp ( Args tok ) {
       d->mk( su2.lastSeg, sudir );
       sudir->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
       sudir->current = dynamic_cast<Inode<Directory>*>(d->theMap[su2.lastSeg]);
+      ++dir_ptr->linkCount;
       for(auto it = dynamic_cast<Inode<Directory>*>(su.b)->file->theMap.begin(); it != dynamic_cast<Inode<Directory>*>(su.b)->file->theMap.end();  ++it) {
         vector<string> newdir;
         newdir.push_back("cp");
@@ -724,6 +727,7 @@ int cp ( Args tok ) {
         d->mk( su.lastSeg, sudir );
         sudir->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
         sudir->current = dynamic_cast<Inode<Directory>*>(d->theMap[su.lastSeg]);
+        ++dir_ptr->linkCount;
         for(auto it = dynamic_cast<Inode<Directory>*>(su.b)->file->theMap.begin(); it != dynamic_cast<Inode<Directory>*>(su.b)->file->theMap.end();  ++it) {
           vector<string> newdir;
           newdir.push_back("cp");
@@ -816,7 +820,7 @@ int write(Args tok)
 	else if(su.b->type() == "file") {
 		Inode<File>* theFile = dynamic_cast<Inode<File>*>(su.b);
 		for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
-		theFile->file->text = theFile->file->text + fileText;
+		theFile->file->text += fileText;
 		theFile->m_time = time(0);
 		theFile->a_time = theFile->m_time;
 		cout << "FILETEXT: " << theFile->file->text << endl;
@@ -1149,7 +1153,6 @@ void preserveRecursive ( Inode<Directory>* ind, string s, ofstream& store) {
 }
 
 
-
 void preserve ( Inode<Directory>* ind, string s) {
   ofstream store ("info.txt");
   if (store.is_open())
@@ -1161,12 +1164,18 @@ void preserve ( Inode<Directory>* ind, string s) {
   return;
 }
 
+int save ( Args tok ) {
+  preserve(root, "");
+  cout << "FileSystem saved successfuly.\n";
+  return 0;
+}
 
 
 int exit( Args tok ) {
    preserve(root, "");
   _exit(0);
 }
+
 
 
 map<string, App*> apps = {
@@ -1186,6 +1195,7 @@ map<string, App*> apps = {
   pair<const string, App*>("read", read),
   pair<const string, App*>("mv", mv),
   pair<const string, App*>("cp", cp),
+  pair<const string, App*>("save", save),
 //  pair<const string, App*>("ioRedirect", ioRedirect)
   
 };  // app maps mames to their implementations.
@@ -1199,6 +1209,14 @@ void FSInit(string file){
   root->file->mk("bin", appdir); //Update to put apps in a directory
   appdir->parent = root; //Update to put apps in a directory
   appdir->current = dynamic_cast<Inode<Directory>*>(root->file->theMap["bin"]); //Update to put apps in a directory
+  
+  for( auto it : apps ) {
+    //Inode<App>* temp(new Inode<App>(ls));
+    //InodeBase* junk = static_cast<InodeBase*>(temp);
+    //    InodeBase* junk = temp;
+    dynamic_cast<Inode<Directory>*>(	wd()->theMap["bin"])->file->theMap[it.first] = new Inode<App>(it.second);
+    ++wd()->theMap["bin"]->linkCount;
+  }
   
   Directory* devdir = new Directory(); //Update to put devs in a directory
   root->file->mk("dev", devdir);//Update to put devss in a directory
@@ -1237,14 +1255,6 @@ void FSInit(string file){
     myfile.close();
   }
   else cout << "Unable to open file"; 
-  
-  for( auto it : apps ) {
-    Inode<App>* temp(new Inode<App>(it.second));
-    InodeBase* junk = static_cast<InodeBase*>(temp);
-    //    InodeBase* junk = temp;
-    dynamic_cast<Inode<Directory>*>(	wd()->theMap["bin"])->file->theMap[it.first] = new Inode<App>(it.second);
-    ++wd()->theMap["bin"]->linkCount;
-  }
 }
 
 }
