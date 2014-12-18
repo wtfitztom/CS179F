@@ -138,7 +138,8 @@ public:
   string type() { return "app"; }
   int getbytes() { return 0; }
   string show() {   // a simple diagnostic aid
-    return "This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " at " + ctime(&m_time); 
+    //return "This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " at " + ctime(&m_time); 
+    return " iNode: #" + T2a(idnum) + "    " + to_string(this->getbytes()) + " bytes    " + type() + "    " + ctime(&m_time);
   } 
   void ls() { cout << show(); }
 };
@@ -197,7 +198,8 @@ public:
   
   Inode<File> ( File* x ) : file(x) {}
   string show() {   // a simple diagnostic aid
-    return " This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " with file size: " + to_string(this->getbytes()) + " at " + ctime(&m_time); 
+    //return " This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " with file size: " + to_string(this->getbytes()) + " at " + ctime(&m_time);
+    return " iNode: #" + T2a(idnum) + "    " + to_string(this->getbytes()) + " bytes    " + type() + "    " + ctime(&m_time);
   } 
   void ls() {}
 };
@@ -221,7 +223,8 @@ public:
   Directory* file;
   Inode<Directory> ( Directory* x ) : file(x) {}
   string show() {   // a simple diagnostic aid
-    return " This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " with file size: " + to_string(this->getbytes()) + " at " + ctime(&m_time); 
+    //return " This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " with file size: " + to_string(this->getbytes()) + " at " + ctime(&m_time);
+    return " iNode: #" + T2a(idnum) + "    " + to_string(this->getbytes()) + " bytes    " + type() + "    " + ctime(&m_time);
   } 
   void ls() { file->ls(); }
 };
@@ -403,27 +406,29 @@ void TreeDFS ( Inode<Directory>* ind, string s) {
     if(it->second->type() == "dir") {
         if(!dynamic_cast<Inode<Directory>*>(it->second)->file->theMap.empty()) {
           if(ind->file->theMap.size() != count) {
-            cout << old_s << "├── " << it->first << " " << it->second->show();
+            cout << old_s << "├── " << left << setw(10) << it->first << setw(0) << " " << it->second->show();
             s = old_s + "│   ";
           }
           else {
-            cout <<  old_s << "└── " << it->first << " " << it->second->show();
+            cout <<  old_s << "└── " << left << setw(10) << it->first << setw(0) << " " << it->second->show();
             s = old_s + "    ";
           }
       }
       else {
-      if(ind->file->theMap.size() != count) cout <<  old_s << "├── " << it->first << " " << it->second->show();
+      if(ind->file->theMap.size() != count) cout <<  old_s << "├── " << left << setw(10) << it->first << setw(0) << " " << it->second->show();
       else cout <<  old_s << "└── " << it->first << " " << it->second->show();
       }
       TreeDFS(dynamic_cast<Inode<Directory>*>(it->second), s);
     }
     else if(ind->file->theMap.size() != count) {
-      if(it->second->type() == "file") cout <<  old_s << "├── " << "\033[0;32m" << it->first << " " << it->second->show() << "\033[0;30m";
-      else cout <<  old_s << "├── " << it->first << " " << it->second->show();
+      if(it->second->type() == "file") cout <<  old_s << "├── " << "\033[0;32m" << left << setw(10) << it->first << setw(0) << " " << it->second->show() << "\033[0;30m";
+      else if(it->second->type() == "app") cout <<  old_s << "├── " << "\033[0;34m" << left << setw(10) << it->first << setw(0) << " " << it->second->show() << "\033[0;30m";
+      else cout <<  old_s << "├── " << left << setw(10) << it->first << setw(0) << " " << it->second->show();
     }
     else {
-      if(it->second->type() == "file") cout <<  old_s << "└── " << "\033[0;32m" << it->first << " " << it->second->show() << "\033[0;30m";
-      else cout <<  old_s << "└── " << it->first << " " << it->second->show();
+      if(it->second->type() == "file") cout <<  old_s << "└── " << "\033[0;32m" << left << setw(10) << it->first << setw(0) << " " << it->second->show() << "\033[0;30m";
+      else if(it->second->type() == "app") cout <<  old_s << "└── " << "\033[0;34m" << left << setw(10) << it->first << setw(0) << " " << it->second->show() << "\033[0;30m";
+      else cout <<  old_s << "└── " << left << setw(10) << it->first << setw(0) << " " << it->second->show();
     }
   }
   return;
@@ -446,7 +451,6 @@ int pwd( Args tok ) {
 	ind = ind->file->parent;
   }
   if(temp.empty()) temp.push_back("/");
-  cout << "Current Directory is: ";
   while (!temp.empty()) {
     cout << temp[temp.size()-1];
 	temp.pop_back();
@@ -456,8 +460,29 @@ int pwd( Args tok ) {
 }
 
 int tree( Args tok ){
-  cout << "." << endl;
-  TreeDFS(wdi, "");
+  if ( tok.size() < 2 ) {
+    cout << "." << endl;
+    TreeDFS(wdi, "");
+  }
+  else {
+    SetUp su( tok );
+    if ( su.error ) return -1;
+    // Need to fix this in the Setup, but shouldn't check for "" here.
+    if(su.lastSeg == "") {
+      cerr << "touch: missing operand\n";
+	  return -1;
+    }
+    else if(su.b->type() == "dir") {
+      Inode<Directory>* ind = wdi;
+      wdi = dynamic_cast<Inode<Directory>*>(su.b);
+      pwd(tok);
+      wdi = ind;
+      TreeDFS(dynamic_cast<Inode<Directory>*>(su.b), "");
+    }
+    else {
+      return -1;
+    }
+  }
   return 0;
 }
 
