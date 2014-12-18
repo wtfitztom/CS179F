@@ -105,7 +105,7 @@ public:
   int openCount = 0;
   int linkCount = 1;
   bool readable, writeable;
-  InodeBase() { idnum = count ++;}  
+  InodeBase() { idnum = count ++; }  
   int idnum;
   
   int unlink() { 
@@ -139,7 +139,7 @@ public:
   int getbytes() { return 0; }
   string show() {   // a simple diagnostic aid
     //return "This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " at " + ctime(&m_time); 
-    return " iNode: #" + T2a(idnum) + "    " + to_string(this->getbytes()) + " bytes    " + type() + "    " + ctime(&m_time);
+    return T2a(linkCount) + " iNode: #" + T2a(idnum) + "    " + to_string(this->getbytes()) + " bytes    " + type() + "    " + ctime(&m_time);
   } 
   void ls() { cout << show(); }
 };
@@ -199,7 +199,7 @@ public:
   Inode<File> ( File* x ) : file(x) {}
   string show() {   // a simple diagnostic aid
     //return " This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " with file size: " + to_string(this->getbytes()) + " at " + ctime(&m_time);
-    return " iNode: #" + T2a(idnum) + "    " + to_string(this->getbytes()) + " bytes    " + type() + "    " + ctime(&m_time);
+    return T2a(linkCount) + " iNode: #" + T2a(idnum) + "    " + to_string(this->getbytes()) + " bytes    " + type() + "    " + ctime(&m_time);
   } 
   void ls() {}
 };
@@ -224,7 +224,7 @@ public:
   Inode<Directory> ( Directory* x ) : file(x) {}
   string show() {   // a simple diagnostic aid
     //return " This is inode #" + T2a(idnum) + ", which describes a/an " + type() + " with file size: " + to_string(this->getbytes()) + " at " + ctime(&m_time);
-    return " iNode: #" + T2a(idnum) + "    " + to_string(this->getbytes()) + " bytes    " + type() + "    " + ctime(&m_time);
+    return T2a(linkCount) + " iNode: #" + T2a(idnum) + "    " + to_string(this->getbytes()) + " bytes    " + type() + "    " + ctime(&m_time);
   } 
   void ls() { file->ls(); }
 };
@@ -416,7 +416,7 @@ void TreeDFS ( Inode<Directory>* ind, string s) {
       }
       else {
       if(ind->file->theMap.size() != count) cout <<  old_s << "├── " << left << setw(10) << it->first << setw(0) << " " << it->second->show();
-      else cout <<  old_s << "└── " << it->first << " " << it->second->show();
+      else cout <<  old_s << "└── " << left << setw(10) << it->first << " " << it->second->show();
       }
       TreeDFS(dynamic_cast<Inode<Directory>*>(it->second), s);
     }
@@ -505,6 +505,7 @@ int touch( Args tok ) {
       File* sufile = new File();
       sufile->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
       sufile->touch( su.lastSeg, sufile );
+      ++dir_ptr->linkCount;
     }
     else {
       su.b->m_time = time(0);
@@ -798,6 +799,7 @@ int write(Args tok)
     sufile->touch( su.lastSeg, sufile );
     for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
     sufile->text = fileText;
+    ++dir_ptr->linkCount;
 	}
 	else if(su.b->type() == "file") {
 		Inode<File>* theFile = dynamic_cast<Inode<File>*>(su.b);
@@ -925,6 +927,7 @@ int mkdir( Args tok ) {
       d->mk( su.lastSeg, sudir );
       sudir->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
       sudir->current = dynamic_cast<Inode<Directory>*>(d->theMap[su.lastSeg]);
+      ++dir_ptr->linkCount;
     }
     temp.erase(temp.begin()+1);
   }
@@ -953,6 +956,7 @@ int mkdir( Args tok, time_t c, time_t m, time_t a){
     sudir->parent = dynamic_cast<Inode<Directory>*>(dir_ptr);
     sudir->current = dynamic_cast<Inode<Directory>*>(d->theMap[su.lastSeg]);
     sudir->current->updateTime(c,m,a);
+    ++dir_ptr->linkCount;
   }
   return 0;
 }
@@ -969,6 +973,7 @@ int write( Args tok, time_t c, time_t m, time_t a){
       for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
       sufile->text = fileText;
       sufile->parent->file->theMap[su.lastSeg]->updateTime(c,m,a);
+      ++dir_ptr->linkCount;
 		
 	}
 	else if(su.b->type() != "file") {
@@ -976,11 +981,11 @@ int write( Args tok, time_t c, time_t m, time_t a){
 		return -1;
 	}
 	else {
-		Inode<File>* theFile  =  dynamic_cast<Inode<File>*>( su.ind->file->theMap.find(tok[1])->second);
-		for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
-		theFile->file->text = theFile->file->text + fileText;
-		theFile->updateTime(c,m,a);
-		cout << "FILETEXT: " << theFile->file->text << endl;
+    Inode<File>* theFile  =  dynamic_cast<Inode<File>*>( su.ind->file->theMap.find(tok[1])->second);
+    for(int i= 2; i<=tok.size()-1 ; i++) fileText += tok[i] +  " ";
+    theFile->file->text = theFile->file->text + fileText;
+    theFile->updateTime(c,m,a);
+    cout << "FILETEXT: " << theFile->file->text << endl;
 	}
   return 0;
 }
@@ -1014,6 +1019,7 @@ int rmdir( Args tok ) {
            << "'; no such file or directory.\n";
     } else {
       dir_ptr->file->rm(su.lastSeg);
+      --dir_ptr->linkCount;
     }
     temp.erase(temp.begin()+1);
   }
@@ -1043,6 +1049,7 @@ int rm( Args tok ) {
     getline( cin, response );            // read user's response.
     if ( response[0] != 'y' && response[0] != 'Y' )  return 0;
     su.ind->file->rm(su.lastSeg);
+    --su.ind->linkCount;
     temp.erase(temp.begin()+1);
   }
   return 0;
@@ -1227,6 +1234,7 @@ void FSInit(string file){
     InodeBase* junk = static_cast<InodeBase*>(temp);
     //    InodeBase* junk = temp;
     dynamic_cast<Inode<Directory>*>(	wd()->theMap["bin"])->file->theMap[it.first] = new Inode<App>(it.second);
+    ++wd()->theMap["bin"]->linkCount;
   }
 }
 
