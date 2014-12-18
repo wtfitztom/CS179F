@@ -1,7 +1,6 @@
 CS179F
 ======
 
-<<<<<<< HEAD
 Operating System Project
 
 
@@ -51,24 +50,3 @@ Design Decisions:
 2. Using the INodes to preserve filesystem(maybe write out the relevent fields and since we know how many fields we can read it back easily, but looking for alternatives)
 3. We tried to make our functionality as code as simple as possible so that everyone could easily understand it and pick it up if they have basic understanding of OOP.
 4. We also tried to model our functionality off of Linux as much as possible. For example, when you type mv if it does not exist in Linux it'll make you that file, so ours does too. There are some cases where Linux doesn't make the new file or dir so ours doesn't do it either.(too the best of our knowledge)
-=======
-Include our filesystem.h files and you should be able to use our system. You pass a vector of args seperated by spaces to Apps and this should call our functions if you type the commands that we have implemented.
-
--ls
--cp
--mv
--tree
-- mk
-- mkdir
-- rm
-- rmdir
-- write
-- read
-- wc
-- exit
-- touch
-- echo
-- cat
-- pwd
-
->>>>>>> 1481f05ba3bcc0a7be5b2b2dcb82d387a9293c1d
