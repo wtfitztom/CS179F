@@ -515,11 +515,11 @@ int touch( Args tok ) {
 }
 
 int mv( Args tok ) {
-	if ( tok.size() < 1 ) {
+	if ( tok.size() < 2 ) {
 		cerr << "mv: missing file operand\n";
 		return -1;
 	}
-	else if ( tok.size() < 2 ) {
+	else if ( tok.size() < 3 ) {
 		cerr << "mv: missing destination file operand.\n";
 		return -1;
 	}
@@ -544,48 +544,60 @@ int mv( Args tok ) {
 			cerr << "mv: missing destination file operand.\n";
 			return -1;
 		}
-		if(su.ind->file->theMap[su.lastSeg] == root->file->theMap["bin"] || su2.ind->file->theMap[su2.lastSeg] == root->file->theMap["bin"]) {
+		else if((su.lastSeg == "bin" || su2.lastSeg == "bin") && (su.ind == root ||su2.ind == root)) {
 			cerr << "mv: Cannot move bin.\n";
 			return -1;
 		}
 		else if(!su2.b) { // if destination doesn't exist
-			Inode<Directory>* dir_ptr_s = dynamic_cast<Inode<Directory>*>(su.ind);
-			Inode<Directory>* dir_ptr_d = dynamic_cast<Inode<Directory>*>(su2.ind);
-			Directory* d_s = dir_ptr_s->file;
-			Directory* d_d = dir_ptr_d->file;
-			d_d->theMap[su2.lastSeg] = su.b;
-			d_s->theMap.erase(su.lastSeg);
-			if(su.b->type() == "dir")
-				dynamic_cast<Inode<Directory>*>(su.b)->file->parent = dynamic_cast<Inode<Directory>*>(dir_ptr_d);
-			else if (su.b->type() == "file")
-				dynamic_cast<Inode<File>*>(su.b)->file->parent = dynamic_cast<Inode<Directory>*>(dir_ptr_d);
+      if(su2.ind == root) {
+        cerr << "no copying in to root allowed.\n";
+        return -1;
+      }
+      else {
+        Inode<Directory>* dir_ptr_s = dynamic_cast<Inode<Directory>*>(su.ind);
+        Inode<Directory>* dir_ptr_d = dynamic_cast<Inode<Directory>*>(su2.ind);
+        Directory* d_s = dir_ptr_s->file;
+        Directory* d_d = dir_ptr_d->file;
+        d_d->theMap[su2.lastSeg] = su.b;
+        d_s->theMap.erase(su.lastSeg);
+        ++dir_ptr_d->linkCount;
+        --dir_ptr_s->linkCount;
+        if(su.b->type() == "dir")
+          dynamic_cast<Inode<Directory>*>(su.b)->file->parent = dynamic_cast<Inode<Directory>*>(dir_ptr_d);
+        else if (su.b->type() == "file")
+          dynamic_cast<Inode<File>*>(su.b)->file->parent = dynamic_cast<Inode<Directory>*>(dir_ptr_d);
+      }
 		}
 		else if (su.b->type() == "file") { // if destination does exist
-			if(su2.b->type() == "dir") {
-				Inode<Directory>* dir_ptr_s = dynamic_cast<Inode<Directory>*>(su.ind);
-				Inode<Directory>* dir_ptr_d = dynamic_cast<Inode<Directory>*>(su2.b);
-				Directory* d_s = dir_ptr_s->file;
-				Directory* d_d = dir_ptr_d->file;
-				d_d->theMap[su.lastSeg] = su.b;
-				d_s->theMap.erase(su.lastSeg);
-				dynamic_cast<Inode<File>*>(su.b)->file->parent = dynamic_cast<Inode<Directory>*>(dir_ptr_d);
-			}
-			else if(su2.b->type() == "file") {
-				Inode<Directory>* dir_ptr_s = dynamic_cast<Inode<Directory>*>(su.ind);
-				Inode<Directory>* dir_ptr_d = dynamic_cast<Inode<Directory>*>(su2.ind);
-				Directory* d_s = dir_ptr_s->file;
-				Directory* d_d = dir_ptr_d->file;
-				d_d->theMap.erase(su2.lastSeg);
-				d_d->theMap[su2.lastSeg] = su.b;
-				d_s->theMap.erase(su.lastSeg);
-				dynamic_cast<Inode<File>*>(su.b)->file->parent = dynamic_cast<Inode<Directory>*>(dir_ptr_d);
-			}
-			else {
-				cerr << "mv: destination is not a file or directory.\n";
-				return -1;
-			}
+      if(su2.b->type() == "dir") {
+        Inode<Directory>* dir_ptr_s = dynamic_cast<Inode<Directory>*>(su.ind);
+        Inode<Directory>* dir_ptr_d = dynamic_cast<Inode<Directory>*>(su2.b);
+        Directory* d_s = dir_ptr_s->file;
+        Directory* d_d = dir_ptr_d->file;
+        d_d->theMap[su.lastSeg] = su.b;
+        d_s->theMap.erase(su.lastSeg);
+        ++dir_ptr_d->linkCount;
+        --dir_ptr_s->linkCount;
+        dynamic_cast<Inode<File>*>(su.b)->file->parent = dynamic_cast<Inode<Directory>*>(dir_ptr_d);
+      }
+      else if(su2.b->type() == "file") {
+        Inode<Directory>* dir_ptr_s = dynamic_cast<Inode<Directory>*>(su.ind);
+        Inode<Directory>* dir_ptr_d = dynamic_cast<Inode<Directory>*>(su2.ind);
+        Directory* d_s = dir_ptr_s->file;
+        Directory* d_d = dir_ptr_d->file;
+        d_d->theMap.erase(su2.lastSeg);
+        d_d->theMap[su2.lastSeg] = su.b;
+        d_s->theMap.erase(su.lastSeg);
+        ++dir_ptr_d->linkCount;
+        --dir_ptr_s->linkCount;
+        dynamic_cast<Inode<File>*>(su.b)->file->parent = dynamic_cast<Inode<Directory>*>(dir_ptr_d);
+      }
+      else {
+        cerr << "mv: destination is not a file or directory.\n";
+        return -1;
+      }
 		}
-		else  if (su.b->type() == "dir") {
+		else if (su.b->type() == "dir") {
 			if(su2.b->type() == "file") {
 				cerr << "mv: Cannot move directory '" << su.lastSeg << "' into file '" << su2.lastSeg << "'.\n";
 				return -1;
@@ -600,9 +612,9 @@ int mv( Args tok ) {
 				else {
 					Inode<Directory>* dir_ptr_s = dynamic_cast<Inode<Directory>*>(su.ind);
 					Directory* d_s = dir_ptr_s->file;
-					d_d->theMap[su2.lastSeg] = su.b;
+					dynamic_cast<Inode<Directory>*>(su2.b)->file->theMap[su.lastSeg] = su.b;
 					d_s->theMap.erase(su.lastSeg);
-                   dynamic_cast<Inode<Directory>*>(su.b)->file->parent = dynamic_cast<Inode<Directory>*>(dir_ptr_d);
+          dynamic_cast<Inode<Directory>*>(su.b)->file->parent = dynamic_cast<Inode<Directory>*>(dir_ptr_d);
 				}
 			}
 			else {
@@ -1204,15 +1216,13 @@ void FSInit(string file){
       vector<string> rfile;          // then get its cmd-line arguments.
       string s;
 	    time_t c, m, a;
-      while( ss >> s ) rfile.push_back(s);
       vector<string> filepaths;
-      for(auto it = rfile.begin(); it != rfile.end(); ++it) {
-        filepaths = split(*it,";");
-        c = atol(filepaths[2].c_str());
-        m = atol(filepaths[3].c_str());
-        a = atol(filepaths[4].c_str());
-        filepaths.erase (filepaths.begin()+2,filepaths.begin()+5); //remove a,m,c times
-	    }
+
+      filepaths = split(line,";");
+      c = atol(filepaths[2].c_str());
+      m = atol(filepaths[3].c_str());
+      a = atol(filepaths[4].c_str());
+      filepaths.erase (filepaths.begin()+2,filepaths.begin()+5); //remove a,m,c times
       if(filepaths[0] == "dir") {
         filepaths[0] = "mkdir";
         mkdir( filepaths, c, m, a );
