@@ -862,7 +862,6 @@ int cd( Args tok ) {
   string home = "/";  // root is everybody's home for now.
   if ( tok.size() == 1 ) tok.push_back( home );
   SetUp su( tok );
-  su.show();
   if ( su.error ) return -1;
   if ( su.b->type() != "dir" ) {
     cerr << "shell: cd:" << su.lastSeg << ": Not a directory\n";
